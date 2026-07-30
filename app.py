@@ -240,7 +240,7 @@ if not edited_df.empty:
       use_container_width=True,
   )
 
-  # 트리맵 시각화 (연속적인 소수점 폰트 스케일링 적용)
+  # 트리맵 시각화 (완전한 소수점 연속 유동 폰트 스케일링 적용)
   if total_portfolio_value > 0 and not result_df.empty:
     st.subheader("🟩 종목별 비중")
 
@@ -286,13 +286,16 @@ if not edited_df.empty:
       area = dx * dy
       weight_val = sizes[i]
 
-      # ⭐️ 소수점 단위 연속 스케일링 (박스 면적에 비례해 모든 글씨 크기가 개별적으로 다름)
-      # 면적(area)의 제곱근에 비례식을 적용하여 소수점 포함 폰트 크기 계산
-      ticker_font_size = max(4.5, min(float(area**0.5 * 3.2), 16.0))
-      pct_font_size = max(3.5, ticker_font_size * 0.72)
+      # ⭐️ 핵심 변경: 소수점(float) 단위로 완전히 연속적이고 개별적인 폰트 크기 계산
+      # 박스 면적(area)과 가로·세로 폭 중 더 작은 값을 복합적으로 반영하여 유기적으로 계산합니다.
+      dimension_factor = min(dx, dy)
+      ticker_font_size = float(
+          max(3.5, min(area**0.5 * dimension_factor * 0.35, 18.5))
+      )
+      pct_font_size = float(max(3.0, ticker_font_size * 0.72))
 
-      if area >= 1.2:
-        # 충분히 큰 박스: 티커와 비중을 위아래로 나누어 연속 비례 크기로 배치
+      if area >= 1.5:
+        # 충분히 큰 박스: 티커와 비중을 소수점 폰트 크기로 나누어 2줄 배치
         ax.text(
             x + dx / 2,
             y + dy / 2 + (dy * 0.08),
@@ -313,31 +316,31 @@ if not edited_df.empty:
             weight="semibold",
             color="#E5E7EB",
         )
-      elif area >= 0.35:
-        # 중간 크기 박스: 한 줄로 압축하여 표시
+      elif area >= 0.4:
+        # 중간 크기 박스: 소수점 폰트 크기로 한 줄 압축 표시
         ax.text(
             x + dx / 2,
             y + dy / 2,
             f"{tickers[i]}\n{weight_val:.1f}%",
             ha="center",
             va="center",
-            fontsize=ticker_font_size * 0.85,
+            fontsize=ticker_font_size * 0.88,
             weight="bold",
             color="white",
         )
-      elif area >= 0.12:
-        # 작은 박스: 겹침 방지를 위해 비중은 생략하고 티커만 연속 비례 크기로 표시
+      elif area >= 0.15:
+        # 작은 박스: 비중 생략하고 티커만 소수점 폰트 크기로 표시
         ax.text(
             x + dx / 2,
             y + dy / 2,
             f"{tickers[i]}",
             ha="center",
             va="center",
-            fontsize=ticker_font_size * 0.9,
+            fontsize=ticker_font_size * 0.95,
             weight="bold",
             color="white",
         )
-      # 극단적으로 작고 납작한 박스(0.12 미만)는 텍스트 생략
+      # 극도로 작고 납작한 박스(0.15 미만)는 텍스트를 아예 그려넣지 않음
 
     ax.set_xlim(0, 100)
     ax.set_ylim(0, 100)
