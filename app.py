@@ -240,7 +240,7 @@ if not edited_df.empty:
       use_container_width=True,
   )
 
-  # 트리맵 시각화 (기존 Set3 색상들에서 채도를 낮추고 톤을 깊게 다듬은 커스텀 팔레트)
+  # 트리맵 시각화 (칙칙함을 줄이고 선명함과 가독성을 높인 모던 비비드 팔레트)
   if total_portfolio_value > 0 and not result_df.empty:
     st.subheader("🟩 종목별 비중")
 
@@ -252,18 +252,18 @@ if not edited_df.empty:
     normed_values = squarify.normalize_sizes(sizes, 100, 100)
     rects = squarify.squarify(normed_values, 0, 0, 100, 100)
 
-    # ⭐️ 기존의 다채로운 색감 구성을 유지하되, 증권 앱에 어울리도록 채도를 누르고 진하게 톤 다운한 팔레트
-    muted_vintage_palette = [
-        "#8DA4C4",  # 차분한 스틸 블루
-        "#8DC3A7",  # 뮤트 세이지 그린
-        "#D4B28C",  # 웜 샌디 브라운
-        "#C997A8",  # 더스티 로즈
-        "#A89EC9",  # 뮤트 라벤더
-        "#D4C27A",  # 올리브 머스터드
-        "#7DAFAE",  # 소프트 블루 틸
-        "#C2927A",  # 진저 테라코타
-        "#949494",  # 쿨 차콜 그레이
-        "#87B5B5",  # 페트롤 블루
+    # ⭐️ 기존 톤에서 탁한 느낌(회색빛)을 걷어내고 선명함을 살린 모던 컬러 팔레트
+    vibrant_clean_palette = [
+        "#4A90E2",  # 선명한 블루
+        "#50E3C2",  # 선명한 민트/청록
+        "#F5A623",  # 웜 오렌지
+        "#E74C3C",  # 모던 코랄 레드
+        "#9B59B6",  # 딥 퍼플
+        "#F1C40F",  # 골드 옐로우
+        "#1ABC9C",  # 에메랄드 틸
+        "#E67E22",  # 호박색
+        "#34495E",  # 차콜 네이비
+        "#2980B9",  # 로얄 블루
     ]
 
     for i, rect in enumerate(rects):
@@ -278,10 +278,10 @@ if not edited_df.empty:
           width=dx,
           bottom=y,
           align="edge",
-          color=muted_vintage_palette[i % len(muted_vintage_palette)],
-          edgecolor="white",  # 칸막이 선을 깔끔하게 유지하여 구분을 명확히 함
+          color=vibrant_clean_palette[i % len(vibrant_clean_palette)],
+          edgecolor="white",
           linewidth=2.0,
-          alpha=0.92,
+          alpha=0.95,
       )
 
       area = dx * dy
@@ -302,7 +302,7 @@ if not edited_df.empty:
             va="center",
             fontsize=font_size,
             weight="bold" if font_size > 8 else "normal",
-            color="#1F2937",  # 짙은 차콜 색상의 텍스트로 가독성을 극대화
+            color="white",  # 선명해진 배경 위에서 글씨가 확실히 대비되도록 흰색 적용
         )
 
     ax.set_xlim(0, 100)
