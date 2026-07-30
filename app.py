@@ -240,7 +240,7 @@ if not edited_df.empty:
       use_container_width=True,
   )
 
-  # 트리맵 시각화 (Finviz/블룸버그 스타일: 면적 단계별 맞춤 텍스트 유동성 적용)
+  # 트리맵 시각화 (연속적인 소수점 폰트 스케일링 적용)
   if total_portfolio_value > 0 and not result_df.empty:
     st.subheader("🟩 종목별 비중")
 
@@ -286,16 +286,20 @@ if not edited_df.empty:
       area = dx * dy
       weight_val = sizes[i]
 
-      # ⭐️ 박스 면적에 따른 4단계 유동적 텍스트 렌더링 (Finviz 방식)
-      if area >= 3.5:
-        # [1단계] 아주 큰 박스: 티커와 비중을 시원하게 분리 배치
+      # ⭐️ 소수점 단위 연속 스케일링 (박스 면적에 비례해 모든 글씨 크기가 개별적으로 다름)
+      # 면적(area)의 제곱근에 비례식을 적용하여 소수점 포함 폰트 크기 계산
+      ticker_font_size = max(4.5, min(float(area**0.5 * 3.2), 16.0))
+      pct_font_size = max(3.5, ticker_font_size * 0.72)
+
+      if area >= 1.2:
+        # 충분히 큰 박스: 티커와 비중을 위아래로 나누어 연속 비례 크기로 배치
         ax.text(
             x + dx / 2,
             y + dy / 2 + (dy * 0.08),
             f"{tickers[i]}",
             ha="center",
             va="center",
-            fontsize=15,
+            fontsize=ticker_font_size,
             weight="bold",
             color="white",
         )
@@ -305,56 +309,35 @@ if not edited_df.empty:
             f"{weight_val:.1f}%",
             ha="center",
             va="center",
-            fontsize=11,
+            fontsize=pct_font_size,
             weight="semibold",
             color="#E5E7EB",
         )
-      elif area >= 1.5:
-        # [2단계] 중간 박스: 적당한 크기로 두 줄 배치
-        ax.text(
-            x + dx / 2,
-            y + dy / 2 + (dy * 0.06),
-            f"{tickers[i]}",
-            ha="center",
-            va="center",
-            fontsize=11,
-            weight="bold",
-            color="white",
-        )
-        ax.text(
-            x + dx / 2,
-            y + dy / 2 - (dy * 0.10),
-            f"{weight_val:.1f}%",
-            ha="center",
-            va="center",
-            fontsize=8,
-            weight="semibold",
-            color="#E5E7EB",
-        )
-      elif area >= 0.5:
-        # [3단계] 작은 박스: 한 줄로 압축하여 티커와 비중 표시
+      elif area >= 0.35:
+        # 중간 크기 박스: 한 줄로 압축하여 표시
         ax.text(
             x + dx / 2,
             y + dy / 2,
             f"{tickers[i]}\n{weight_val:.1f}%",
             ha="center",
             va="center",
-            fontsize=7,
+            fontsize=ticker_font_size * 0.85,
             weight="bold",
             color="white",
         )
-      elif area >= 0.15:
-        # [4단계] 너무 작고 납작한 박스: 겹침 방지를 위해 비중은 과감히 생략하고 티커만 표시
+      elif area >= 0.12:
+        # 작은 박스: 겹침 방지를 위해 비중은 생략하고 티커만 연속 비례 크기로 표시
         ax.text(
             x + dx / 2,
             y + dy / 2,
             f"{tickers[i]}",
             ha="center",
             va="center",
-            fontsize=6,
+            fontsize=ticker_font_size * 0.9,
             weight="bold",
             color="white",
         )
+      # 극단적으로 작고 납작한 박스(0.12 미만)는 텍스트 생략
 
     ax.set_xlim(0, 100)
     ax.set_ylim(0, 100)
