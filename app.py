@@ -34,13 +34,9 @@ if "portfolio" not in st.session_state:
   st.session_state.portfolio = saved_df
 
 
-def get_sorted_portfolio(df):
-  if df.empty:
-    return df
-
-  temp_df = df.copy()
+def get_current_prices(tickers):
   current_prices_temp = {}
-  for ticker in temp_df["티커"]:
+  for ticker in tickers:
     ticker_raw = str(ticker).strip()
     price = 0.0
     if ticker_raw:
@@ -55,40 +51,29 @@ def get_sorted_portfolio(df):
       except Exception:
         price = 0.0
     current_prices_temp[ticker_raw] = price
-
-  # 내부 연산을 위해 임시 컬럼명 유지 후, 출력 시점에 변경
-  temp_df["실시간 주당 현재가"] = temp_df["티커"].map(current_prices_temp)
-  temp_df["수량"] = pd.to_numeric(temp_df["수량"], errors="coerce").fillna(0.0)
-  temp_df["현재 평가금액(총액)"] = temp_df["수량"] * temp_df["실시간 주당 현재가"]
-
-  temp_df = temp_df.sort_values(
-      by="현재 평가금액(총액)", ascending=False
-  ).reset_index(drop=True)
-
-  return temp_df
+  return current_prices_temp
 
 
-sorted_session_df = get_sorted_portfolio(st.session_state.portfolio)
-
-input_cols = ["티커", "수량", "연 예상 성장률(%)", "연 회수율(%)"]
-display_input_df = sorted_session_df[input_cols]
-
-# ⭐️ 사이드바 설정
+# ⭐️ 사이드바 설정 (<포트폴리오 설정> 전용 공간: 보유 수량 여부와 관계없이 설정된 모든 종목 관리)
 with st.sidebar:
   st.header("⚙️ 포트폴리오 설정")
   st.write(
-      "종목별 **연 예상 성장률**과 **회수율(배당 등)**을 수정하거나 종목을"
+      "종목별 **연 예상 성장률**과 **회수율(배당 등)**을 미리 설정하거나 종목을"
       " 관리할 수 있습니다."
   )
 
+  # 세션에 있는 전체 설정 데이터를 데이터 에디터에 연결
+  sidebar_input_cols = ["티커", "수량", "연 예상 성장률(%)", "연 회수율(%)"]
+  current_setting_df = st.session_state.portfolio[sidebar_input_cols]
+
   edited_df = st.data_editor(
-      display_input_df,
+      current_setting_df,
       num_rows="dynamic",
       use_container_width=True,
       key="sidebar_editor",
   )
 
-  if not edited_df.equals(display_input_df):
+  if not edited_df.equals(current_setting_df):
     edited_df.to_csv(DATA_FILE, index=False)
     st.session_state.portfolio = edited_df
     st.rerun()
@@ -117,8 +102,12 @@ with st.form("trade_form", clear_on_submit=True):
       st.error("수량은 0보다 커야 합니다.")
     else:
       current_portfolio = st.session_state.portfolio.copy()
+      # 티커 대소문자 통일을 위해 처리
+      current_portfolio["티커_upper"] = (
+          current_portfolio["티커"].astype(str).str.strip().str.upper()
+      )
       match_idx = current_portfolio[
-          current_portfolio["티커"].str.upper() == trade_ticker
+          current_portfolio["티커_upper"] == trade_ticker
       ].index
 
       if not match_idx.empty:
@@ -133,15 +122,14 @@ with st.form("trade_form", clear_on_submit=True):
           )
         else:
           new_shares = current_shares - trade_shares
+          # 전량 매도하더라도 설정 공간에는 남겨두고 수량만 0으로 처리
+          current_portfolio.loc[idx, "수량"] = max(0.0, new_shares)
           if new_shares <= 0:
-            current_portfolio = current_portfolio.drop(idx).reset_index(
-                drop=True
-            )
             st.warning(
-                f"[{trade_ticker}] 전량 매도되어 포트폴리오에서 제거되었습니다."
+                f"[{trade_ticker}] 전량 매도되어 보유 목록에서 제외되었으나,"
+                " 설정에는 유지됩니다."
             )
           else:
-            current_portfolio.loc[idx, "수량"] = new_shares
             st.success(
                 f"[{trade_ticker}] {trade_shares}주 매도 반영 완료! (잔여"
                 f" {new_shares}주)"
@@ -150,6 +138,7 @@ with st.form("trade_form", clear_on_submit=True):
         if trade_type == "매도":
           st.error("보유하고 있지 않은 종목은 매도할 수 없습니다.")
         else:
+          # 설정에 없는 신규 종목 매수 시 설정(포트폴리오)에 새로 추가
           new_row = pd.DataFrame({
               "티커": [trade_ticker],
               "수량": [float(trade_shares)],
@@ -160,8 +149,12 @@ with st.form("trade_form", clear_on_submit=True):
               [current_portfolio, new_row], ignore_index=True
           )
           st.success(
-              f" 신규 종목 [{trade_ticker}]이(가) 추가되고 매수가 반영되었습니다!"
+              f"신규 종목 [{trade_ticker}]이(가) 설정에 추가되고 매수가"
+              " 반영되었습니다!"
           )
+
+      if "티커_upper" in current_portfolio.columns:
+        current_portfolio = current_portfolio.drop(columns=["티커_upper"])
 
       current_portfolio.to_csv(DATA_FILE, index=False)
       st.session_state.portfolio = current_portfolio
@@ -170,198 +163,211 @@ with st.form("trade_form", clear_on_submit=True):
 st.divider()
 
 if not edited_df.empty:
-  result_df = sorted_session_df.copy()
-
-  result_df["수량"] = pd.to_numeric(result_df["수량"], errors="coerce").fillna(
-      0.0
-  )
-  result_df["연 예상 성장률(%)"] = pd.to_numeric(
-      result_df["연 예상 성장률(%)"], errors="coerce"
+  # 전체 설정 데이터 중 실제 수량이 0보다 큰 종목만 필터링하여 분석 및 현황에 반영
+  raw_df = st.session_state.portfolio.copy()
+  raw_df["수량"] = pd.to_numeric(raw_df["수량"], errors="coerce").fillna(0.0)
+  raw_df["연 예상 성장률(%)"] = pd.to_numeric(
+      raw_df["연 예상 성장률(%)"], errors="coerce"
   ).fillna(0.0)
-  result_df["연 회수율(%)"] = pd.to_numeric(
-      result_df["연 회수율(%)"], errors="coerce"
+  raw_df["연 회수율(%)"] = pd.to_numeric(
+      raw_df["연 회수율(%)"], errors="coerce"
   ).fillna(0.0)
 
-  total_portfolio_value = result_df["현재 평가금액(총액)"].sum()
+  # ⭐️ <종목별 분석 및 비중 현황>: 수량이 0보다 큰 보유 종목만 필터링
+  active_df = raw_df[raw_df["수량"] > 0].copy()
 
-  if total_portfolio_value > 0:
-    result_df["포트폴리오 비중(%)"] = (
-        result_df["현재 평가금액(총액)"] / total_portfolio_value
-    ) * 100
-    result_df["가중 성장 기여도"] = (
-        result_df["현재 평가금액(총액)"] * result_df["연 예상 성장률(%)"]
+  if not active_df.empty:
+    tickers_to_fetch = active_df["티커"].tolist()
+    current_prices = get_current_prices(tickers_to_fetch)
+
+    active_df["실시간 주당 현재가"] = active_df["티커"].map(current_prices)
+    active_df["현재 평가금액(총액)"] = (
+        active_df["수량"] * active_df["실시간 주당 현재가"]
     )
-    result_df["가중 회수 기여도"] = (
-        result_df["현재 평가금액(총액)"] * result_df["연 회수율(%)"]
+
+    active_df = active_df.sort_values(
+        by="현재 평가금액(총액)", ascending=False
+    ).reset_index(drop=True)
+
+    total_portfolio_value = active_df["현재 평가금액(총액)"].sum()
+
+    if total_portfolio_value > 0:
+      active_df["포트폴리오 비중(%)"] = (
+          active_df["현재 평가금액(총액)"] / total_portfolio_value
+      ) * 100
+      active_df["가중 성장 기여도"] = (
+          active_df["현재 평가금액(총액)"] * active_df["연 예상 성장률(%)"]
+      )
+      active_df["가중 회수 기여도"] = (
+          active_df["현재 평가금액(총액)"] * active_df["연 회수율(%)"]
+      )
+
+      total_weighted_growth = (
+          active_df["가중 성장 기여도"].sum() / total_portfolio_value
+      )
+      total_weighted_return = (
+          active_df["가중 회수 기여도"].sum() / total_portfolio_value
+      )
+    else:
+      active_df["포트폴리오 비중(%)"] = 0.0
+      total_weighted_growth = 0.0
+      total_weighted_return = 0.0
+
+    # 컬럼명 변경 복사본
+    table_df = active_df.copy()
+    table_df = table_df.rename(
+        columns={
+            "실시간 주당 현재가": "현재가($)",
+            "현재 평가금액(총액)": "평가금액($)",
+        }
     )
 
-    total_weighted_growth = (
-        result_df["가중 성장 기여도"].sum() / total_portfolio_value
-    )
-    total_weighted_return = (
-        result_df["가중 회수 기여도"].sum() / total_portfolio_value
-    )
-  else:
-    result_df["포트폴리오 비중(%)"] = 0.0
-    total_weighted_growth = 0.0
-    total_weighted_return = 0.0
-
-  # 컬럼명을 사용자 요청대로 변경하기 위한 복사본 생성
-  table_df = result_df.copy()
-  table_df = table_df.rename(
-      columns={
-          "실시간 주당 현재가": "현재가($)",
-          "현재 평가금액(총액)": "평가금액($)",
-      }
-  )
-
-  # 결과 테이블 출력
-  st.subheader("📊 종목별 분석 및 비중 현황")
-  display_df = table_df[
-      [
-          "티커",
-          "수량",
-          "현재가($)",
-          "평가금액($)",
-          "포트폴리오 비중(%)",
-          "연 예상 성장률(%)",
-          "연 회수율(%)",
-      ]
-  ]
-
-  st.dataframe(
-      display_df.style.format({
-          "수량": "{:,.0f}",
-          "현재가($)": "{:,.2f}",
-          "평가금액($)": "{:,.2f}",
-          "포트폴리오 비중(%)": "{:.2f}%",
-          "연 예상 성장률(%)": "{:.2f}%",
-          "연 회수율(%)": "{:.2f}%",
-      }),
-      use_container_width=True,
-  )
-
-  # 트리맵 시각화 (티커 90%, 비중 80% 최종 독립 축소 적용)
-  if total_portfolio_value > 0 and not result_df.empty:
-    st.subheader("🟩 종목별 비중")
-
-    fig, ax = plt.subplots(figsize=(10, 5))
-
-    sizes = result_df["포트폴리오 비중(%)"].values
-    tickers = result_df["티커"].values
-
-    normed_values = squarify.normalize_sizes(sizes, 100, 100)
-    rects = squarify.squarify(normed_values, 0, 0, 100, 100)
-
-    bright_distinct_palette = [
-        "#3B82F6",
-        "#10B981",
-        "#F59E0B",
-        "#EF4444",
-        "#8B5CF6",
-        "#06B6D4",
-        "#EC4899",
-        "#14B8A6",
-        "#6366F1",
-        "#84CC16",
+    # 결과 테이블 출력
+    st.subheader("📊 종목별 분석 및 비중 현황")
+    display_df = table_df[
+        [
+            "티커",
+            "수량",
+            "현재가($)",
+            "평가금액($)",
+            "포트폴리오 비중(%)",
+            "연 예상 성장률(%)",
+            "연 회수율(%)",
+        ]
     ]
 
-    for i, rect in enumerate(rects):
-      x = rect["x"]
-      y = rect["y"]
-      dx = rect["dx"]
-      dy = rect["dy"]
+    st.dataframe(
+        display_df.style.format({
+            "수량": "{:,.0f}",
+            "현재가($)": "{:,.2f}",
+            "평가금액($)": "{:,.2f}",
+            "포트폴리오 비중(%)": "{:.2f}%",
+            "연 예상 성장률(%)": "{:.2f}%",
+            "연 회수율(%)": "{:.2f}%",
+        }),
+        use_container_width=True,
+    )
 
-      ax.bar(
-          x=x,
-          height=dy,
-          width=dx,
-          bottom=y,
-          align="edge",
-          color=bright_distinct_palette[i % len(bright_distinct_palette)],
-          edgecolor="#FFFFFF",
-          linewidth=2.5,
-          alpha=0.92,
-      )
+    # 트리맵 시각화
+    if total_portfolio_value > 0:
+      st.subheader("🟩 종목별 비중")
 
-      area = dx * dy
-      weight_val = sizes[i]
+      fig, ax = plt.subplots(figsize=(10, 5))
 
-      # 박스 대각선 및 1/4 기준 계산
-      box_diagonal = np.sqrt(dx**2 + dy**2)
-      target_text_diagonal = box_diagonal / 4.0
+      sizes = active_df["포트폴리오 비중(%)"].values
+      tickers = active_df["티커"].values
 
-      # 티커 크기: 대각선 1/4 기준에서 90%로 설정
-      ticker_font_size = float(
-          max(
-              2.5,
-              target_text_diagonal
-              * 3.2
-              / (1.0 + 0.05 * len(tickers[i]))
-              * 0.90,
+      normed_values = squarify.normalize_sizes(sizes, 100, 100)
+      rects = squarify.squarify(normed_values, 0, 0, 100, 100)
+
+      bright_distinct_palette = [
+          "#3B82F6",
+          "#10B981",
+          "#F59E0B",
+          "#EF4444",
+          "#8B5CF6",
+          "#06B6D4",
+          "#EC4899",
+          "#14B8A6",
+          "#6366F1",
+          "#84CC16",
+      ]
+
+      for i, rect in enumerate(rects):
+        x = rect["x"]
+        y = rect["y"]
+        dx = rect["dx"]
+        dy = rect["dy"]
+
+        ax.bar(
+            x=x,
+            height=dy,
+            width=dx,
+            bottom=y,
+            align="edge",
+            color=bright_distinct_palette[i % len(bright_distinct_palette)],
+            edgecolor="#FFFFFF",
+            linewidth=2.5,
+            alpha=0.92,
+        )
+
+        area = dx * dy
+        weight_val = sizes[i]
+
+        box_diagonal = np.sqrt(dx**2 + dy**2)
+        target_text_diagonal = box_diagonal / 4.0
+
+        ticker_font_size = float(
+            max(
+                2.5,
+                target_text_diagonal
+                * 3.2
+                / (1.0 + 0.05 * len(tickers[i]))
+                * 0.90,
+            )
+        )
+        pct_font_size = float(
+            max(1.8, target_text_diagonal * 2.0 / (1.0 + 0.05 * 5) * 0.90)
+        )
+
+        if area >= 1.2:
+          ax.text(
+              x + dx / 2,
+              y + dy / 2 + (dy * 0.12),
+              f"{tickers[i]}",
+              ha="center",
+              va="center",
+              fontsize=ticker_font_size,
+              weight="bold",
+              color="white",
           )
-      )
-      # ⭐️ 비중 크기: 티커와 독립적으로 계산하되, 직전 설정 대비 80%로 확실하게 축소 적용
-      pct_font_size = float(
-          max(1.8, target_text_diagonal * 2.0 / (1.0 + 0.05 * 5) * 0.90)
-      )
+          ax.text(
+              x + dx / 2,
+              y + dy / 2 - (dy * 0.13),
+              f"{weight_val:.1f}%",
+              ha="center",
+              va="center",
+              fontsize=pct_font_size,
+              weight="semibold",
+              color="#E5E7EB",
+          )
+        elif area >= 0.35:
+          ax.text(
+              x + dx / 2,
+              y + dy / 2,
+              f"{tickers[i]}\n{weight_val:.1f}%",
+              ha="center",
+              va="center",
+              fontsize=ticker_font_size * 0.85,
+              weight="bold",
+              color="white",
+          )
+        elif area >= 0.12:
+          ax.text(
+              x + dx / 2,
+              y + dy / 2,
+              f"{tickers[i]}",
+              ha="center",
+              va="center",
+              fontsize=ticker_font_size * 0.90,
+              weight="bold",
+              color="white",
+          )
 
-      if area >= 1.2:
-        # 티커와 비중 2줄 배치 (간격 유지)
-        ax.text(
-            x + dx / 2,
-            y + dy / 2 + (dy * 0.12),
-            f"{tickers[i]}",
-            ha="center",
-            va="center",
-            fontsize=ticker_font_size,
-            weight="bold",
-            color="white",
-        )
-        ax.text(
-            x + dx / 2,
-            y + dy / 2 - (dy * 0.13),
-            f"{weight_val:.1f}%",
-            ha="center",
-            va="center",
-            fontsize=pct_font_size,
-            weight="semibold",
-            color="#E5E7EB",
-        )
-      elif area >= 0.35:
-        # 다소 작은 박스: 한 줄 압축 표시
-        ax.text(
-            x + dx / 2,
-            y + dy / 2,
-            f"{tickers[i]}\n{weight_val:.1f}%",
-            ha="center",
-            va="center",
-            fontsize=ticker_font_size * 0.85,
-            weight="bold",
-            color="white",
-        )
-      elif area >= 0.12:
-        # 작은 박스: 티커만 표시
-        ax.text(
-            x + dx / 2,
-            y + dy / 2,
-            f"{tickers[i]}",
-            ha="center",
-            va="center",
-            fontsize=ticker_font_size * 0.90,
-            weight="bold",
-            color="white",
-        )
+      ax.set_xlim(0, 100)
+      ax.set_ylim(0, 100)
+      ax.axis("off")
+      st.pyplot(fig)
 
-    ax.set_xlim(0, 100)
-    ax.set_ylim(0, 100)
-    ax.axis("off")
-    st.pyplot(fig)
-
-  # 종합 성과 요약
-  st.divider()
-  st.subheader("🎯 전체 포트폴리오 종합 성과 요약")
-  col1, col2, col3 = st.columns(3)
-  col1.metric("총 포트폴리오 평가금액", f"${total_portfolio_value:,.2f}")
-  col2.metric("포트폴리오 연 예상 성장률", f"{total_weighted_growth:.2f}%")
-  col3.metric("포트폴리오 연 예상 회수율", f"{total_weighted_return:.2f}%")
+    # 종합 성과 요약
+    st.divider()
+    st.subheader("🎯 전체 포트폴리오 종합 성과 요약")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("총 포트폴리오 평가금액", f"${total_portfolio_value:,.2f}")
+    col2.metric("포트폴리오 연 예상 성장률", f"{total_weighted_growth:.2f}%")
+    col3.metric("포트폴리오 연 예상 회수율", f"{total_weighted_return:.2f}%")
+  else:
+    st.info(
+        "현재 보유 중인 종목이 없습니다. 사이드바 설정이나 매수 거래 입력을"
+        " 통해 종목과 수량을 추가해 주세요."
+    )
