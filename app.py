@@ -240,9 +240,9 @@ if not edited_df.empty:
       use_container_width=True,
   )
 
-  # 트리맵 시각화
+  # 트리맵 시각화 (제목 변경 완료)
   if total_portfolio_value > 0 and not result_df.empty:
-    st.subheader("🟩 종목별 포트폴리오 비중 (트리맵)")
+    st.subheader("🟩 종목별 비중")
 
     fig, ax = plt.subplots(figsize=(10, 5))
 
