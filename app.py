@@ -243,36 +243,54 @@ if not edited_df.empty:
       use_container_width=True,
   )
 
-  # ⭐️ 모바일에서도 겹치지 않게 깔끔한 범례(Legend)와 도넛 차트로 분리
+  # ⭐️ 비중 순서 정렬(내림차순)이 확실히 적용되도록 수정한 도넛 차트
   if total_portfolio_value > 0 and not result_df.empty:
     st.subheader("🥧 종목별 포트폴리오 비중")
     import altair as alt
 
     chart_data = result_df[["티커", "포트폴리오 비중(%)"]].copy()
+    # 평가금액 순서대로 정렬된 티커 리스트 추출
     tickers_sorted = chart_data["티커"].tolist()
 
-    # 깔끔하게 오른쪽에 티커별 색상 범례가 표시되도록 설정 (글자 겹침 방지)
-    interactive_pie = (
-        alt.Chart(chart_data)
-        .mark_arc(innerRadius=65, outerRadius=115, stroke="#fff")
-        .encode(
-            theta=alt.Theta(
-                field="포트폴리오 비중(%)",
-                type="quantitative",
-                sort=tickers_sorted,
-            ),
-            color=alt.Color(
-                field="티커",
-                type="nominal",
-                sort=tickers_sorted,
-                legend=alt.Legend(title="종목", orient="right"),
-            ),
-            tooltip=["티커", alt.Tooltip("포트폴리오 비중(%)", format=".2f")],
-        )
-        .properties(height=320)
+    # 조각 내부에 표시할 텍스트 (티커와 비중)
+    chart_data["라벨"] = (
+        chart_data["티커"]
+        + " ("
+        + chart_data["포트폴리오 비중(%)"].map("{:.1f}%".format)
+        + ")"
     )
 
-    st.altair_chart(interactive_pie, use_container_width=True)
+    base = alt.Chart(chart_data).encode(
+        theta=alt.Theta(
+            field="포트폴리오 비중(%)",
+            type="quantitative",
+            sort=tickers_sorted,  # 비중 순서 고정
+        ),
+        color=alt.Color(
+            field="티커",
+            type="nominal",
+            sort=tickers_sorted,
+            legend=alt.Legend(title="종목 범례", orient="bottom"),
+        ),
+    )
+
+    # 도넛 차트 아크
+    pie = base.mark_arc(innerRadius=65, outerRadius=110, stroke="#fff").encode(
+        order=alt.Order("포트폴리오 비중(%)", sort="descending"),
+        tooltip=["티커", alt.Tooltip("포트폴리오 비중(%)", format=".2f")],
+    )
+
+    # 조각 내부에 글씨가 들어가도록 배치 (비중이 너무 작으면 생략되거나 보기 좋게 출력됨)
+    text = base.mark_text(radius=88, size=10, color="white", fontWeight="bold").encode(
+        text=alt.condition(
+            alt.datum["포트폴리오 비중(%)"] > 4,  # 4% 이상인 종목만 글씨 표시
+            "라벨",
+            alt.value(""),
+        ),
+        order=alt.Order("포트폴리오 비중(%)", sort="descending"),
+    )
+
+    st.altair_chart(pie + text, use_container_width=True)
 
   # 전체 포트폴리오 요약 지표 출력
   st.divider()
