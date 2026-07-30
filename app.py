@@ -31,11 +31,12 @@ saved_df = pd.read_csv(DATA_FILE)
 if "portfolio" not in st.session_state:
   st.session_state.portfolio = saved_df
 
-# ⭐️ 실시간 현재가를 가져와서 모든 단계에서 일관되게 평가금액 기준 정렬을 수행하는 함수 정의
+
+# 실시간 현재가를 가져와서 모든 단계에서 일관되게 평가금액 기준 정렬을 수행하는 함수 정의
 def get_sorted_portfolio(df):
   if df.empty:
     return df
-  
+
   temp_df = df.copy()
   current_prices_temp = {}
   for ticker in temp_df["티커"]:
@@ -62,8 +63,9 @@ def get_sorted_portfolio(df):
   temp_df = temp_df.sort_values(
       by="현재 평가금액(총액)", ascending=False
   ).reset_index(drop=True)
-  
+
   return temp_df
+
 
 # 세션 상태의 포트폴리오를 항상 정렬된 상태로 관리
 sorted_session_df = get_sorted_portfolio(st.session_state.portfolio)
@@ -241,13 +243,20 @@ if not edited_df.empty:
       use_container_width=True,
   )
 
-  # 종목별 포트폴리오 비중 원형 그래프 (비중 내림차순 정렬 및 마우스 오버 시 확대 모션)
+  # ⭐️ 모바일에서도 비중과 종목명이 그래프 위에 바로 보이도록 수정된 원형(도넛) 그래프
   if total_portfolio_value > 0 and not result_df.empty:
     st.subheader("🥧 종목별 포트폴리오 비중")
     import altair as alt
 
     chart_data = result_df[["티커", "포트폴리오 비중(%)"]].copy()
     tickers_sorted = chart_data["티커"].tolist()
+
+    # 표시용 포맷팅 컬럼 추가 (예: "AAPL: 45.2%")
+    chart_data["비중_라벨"] = (
+        chart_data["티커"]
+        + ": "
+        + chart_data["포트폴리오 비중(%)"].map("{:.1f}%".format)
+    )
 
     base = alt.Chart(chart_data).encode(
         theta=alt.Theta(
@@ -260,20 +269,19 @@ if not edited_df.empty:
         ),
     )
 
-    hover = alt.selection_point(fields=["티커"], on="pointerover")
-
-    interactive_pie = (
-        base.mark_arc(innerRadius=65, outerRadius=115, stroke="#fff")
-        .encode(
-            order=alt.Order("포트폴리오 비중(%)", sort="descending"),
-            tooltip=["티커", alt.Tooltip("포트폴리오 비중(%)", format=".2f")],
-            size=alt.condition(hover, alt.value(130), alt.value(110)),
-            opacity=alt.condition(hover, alt.value(1), alt.value(0.85)),
-        )
-        .add_params(hover)
+    # 도넛 차트 조각
+    pie = base.mark_arc(innerRadius=65, outerRadius=115, stroke="#fff").encode(
+        order=alt.Order("포트폴리오 비중(%)", sort="descending"),
+        tooltip=["티커", alt.Tooltip("포트폴리오 비중(%)", format=".2f")],
     )
 
-    st.altair_chart(interactive_pie, use_container_width=True)
+    # 각 조각 위에 텍스트(종목명 + 비중)를 항상 표시하도록 설정
+    text = base.mark_text(radius=135, size=12, fontWeight="bold").encode(
+        text="비중_라벨",
+        order=alt.Order("포트폴리오 비중(%)", sort="descending"),
+    )
+
+    st.altair_chart(pie + text, use_container_width=True)
 
   # 전체 포트폴리오 요약 지표 출력
   st.divider()
