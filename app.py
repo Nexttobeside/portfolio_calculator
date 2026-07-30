@@ -181,8 +181,9 @@ if not edited_df.empty:
   total_portfolio_value = result_df["현재 평가금액(총액)"].sum()
 
   if total_portfolio_value > 0:
+    # ⭐️ 괄호 오류 수정 완료된 부분
     result_df["포트폴리오 비중(%)"] = (
-        result_df["현재 평가금액(총액)" / total_portfolio_value
+        result_df["현재 평가금액(총액)"] / total_portfolio_value
     ) * 100
     result_df["가중 성장 기여도"] = (
         result_df["현재 평가금액(총액)"] * result_df["연 예상 성장률(%)"]
@@ -227,7 +228,7 @@ if not edited_df.empty:
       use_container_width=True,
   )
 
-  # ⭐️ 박스 크기(비중)에 맞춰 글자 크기가 동적으로 조절되는 트리맵
+  # ⭐️ 박스 크기에 맞춰 글자 크기가 동적으로 조절되는 트리맵
   if total_portfolio_value > 0 and not result_df.empty:
     st.subheader("🟩 종목별 포트폴리오 비중 (트리맵)")
 
@@ -236,7 +237,6 @@ if not edited_df.empty:
     sizes = result_df["포트폴리오 비중(%)"].values
     tickers = result_df["티커"].values
 
-    # squarify로 사각형 좌표 계산
     normed_values = squarify.normalize_sizes(sizes, 100, 100)
     rects = squarify.squarify(normed_values, 0, 0, 100, 100)
 
@@ -248,7 +248,6 @@ if not edited_df.empty:
       dx = rect["dx"]
       dy = rect["dy"]
 
-      # 사각형 그리기
       ax.bar(
           x=x,
           height=dy,
@@ -261,11 +260,9 @@ if not edited_df.empty:
           alpha=0.85,
       )
 
-      # ⭐️ 박스 면적(dx * dy)에 비례해서 글자 크기 동적 조절 (최소 7, 최대 14)
       area = dx * dy
       font_size = max(7, min(14, int(area ** 0.45 * 2.2)))
 
-      # 비중이 너무 작아서(예: 1% 미만) 글자가 들어갈 공간이 없으면 글자 생략
       if area > 1.5:
         label_text = f"{tickers[i]}\n{sizes[i]:.1f}%"
         ax.text(
