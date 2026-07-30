@@ -243,7 +243,7 @@ if not edited_df.empty:
       use_container_width=True,
   )
 
-  # ⭐️ 모바일에서도 비중과 종목명이 그래프 위에 바로 보이도록 수정된 원형(도넛) 그래프
+  # ⭐️ 모바일에서도 겹치지 않게 깔끔한 범례(Legend)와 도넛 차트로 분리
   if total_portfolio_value > 0 and not result_df.empty:
     st.subheader("🥧 종목별 포트폴리오 비중")
     import altair as alt
@@ -251,37 +251,28 @@ if not edited_df.empty:
     chart_data = result_df[["티커", "포트폴리오 비중(%)"]].copy()
     tickers_sorted = chart_data["티커"].tolist()
 
-    # 표시용 포맷팅 컬럼 추가 (예: "AAPL: 45.2%")
-    chart_data["비중_라벨"] = (
-        chart_data["티커"]
-        + ": "
-        + chart_data["포트폴리오 비중(%)"].map("{:.1f}%".format)
+    # 깔끔하게 오른쪽에 티커별 색상 범례가 표시되도록 설정 (글자 겹침 방지)
+    interactive_pie = (
+        alt.Chart(chart_data)
+        .mark_arc(innerRadius=65, outerRadius=115, stroke="#fff")
+        .encode(
+            theta=alt.Theta(
+                field="포트폴리오 비중(%)",
+                type="quantitative",
+                sort=tickers_sorted,
+            ),
+            color=alt.Color(
+                field="티커",
+                type="nominal",
+                sort=tickers_sorted,
+                legend=alt.Legend(title="종목", orient="right"),
+            ),
+            tooltip=["티커", alt.Tooltip("포트폴리오 비중(%)", format=".2f")],
+        )
+        .properties(height=320)
     )
 
-    base = alt.Chart(chart_data).encode(
-        theta=alt.Theta(
-            field="포트폴리오 비중(%)",
-            type="quantitative",
-            sort=tickers_sorted,
-        ),
-        color=alt.Color(
-            field="티커", type="nominal", sort=tickers_sorted, legend=None
-        ),
-    )
-
-    # 도넛 차트 조각
-    pie = base.mark_arc(innerRadius=65, outerRadius=115, stroke="#fff").encode(
-        order=alt.Order("포트폴리오 비중(%)", sort="descending"),
-        tooltip=["티커", alt.Tooltip("포트폴리오 비중(%)", format=".2f")],
-    )
-
-    # 각 조각 위에 텍스트(종목명 + 비중)를 항상 표시하도록 설정
-    text = base.mark_text(radius=135, size=12, fontWeight="bold").encode(
-        text="비중_라벨",
-        order=alt.Order("포트폴리오 비중(%)", sort="descending"),
-    )
-
-    st.altair_chart(pie + text, use_container_width=True)
+    st.altair_chart(interactive_pie, use_container_width=True)
 
   # 전체 포트폴리오 요약 지표 출력
   st.divider()
