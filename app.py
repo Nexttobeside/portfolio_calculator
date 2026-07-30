@@ -1,5 +1,7 @@
 import os
+import matplotlib.pyplot as plt
 import pandas as pd
+import squarify
 import streamlit as st
 import yfinance as yf
 
@@ -25,14 +27,12 @@ if not os.path.exists(DATA_FILE):
   })
   default_df.to_csv(DATA_FILE, index=False)
 
-# 항상 CSV 파일에서 최신 데이터를 불러와 세션 상태의 기본값으로 사용
 saved_df = pd.read_csv(DATA_FILE)
 
 if "portfolio" not in st.session_state:
   st.session_state.portfolio = saved_df
 
 
-# 실시간 현재가를 가져와서 모든 단계에서 일관되게 평가금액 기준 정렬을 수행하는 함수 정의
 def get_sorted_portfolio(df):
   if df.empty:
     return df
@@ -59,7 +59,6 @@ def get_sorted_portfolio(df):
   temp_df["수량"] = pd.to_numeric(temp_df["수량"], errors="coerce").fillna(0.0)
   temp_df["현재 평가금액(총액)"] = temp_df["수량"] * temp_df["실시간 주당 현재가"]
 
-  # 평가금액 기준 내림차순 정렬 후 인덱스 재정렬
   temp_df = temp_df.sort_values(
       by="현재 평가금액(총액)", ascending=False
   ).reset_index(drop=True)
@@ -67,21 +66,17 @@ def get_sorted_portfolio(df):
   return temp_df
 
 
-# 세션 상태의 포트폴리오를 항상 정렬된 상태로 관리
 sorted_session_df = get_sorted_portfolio(st.session_state.portfolio)
 
-# 사이드바 설정창용 데이터프레임 (입력 컬럼만 추출)
 input_cols = ["티커", "수량", "연 예상 성장률(%)", "연 회수율(%)"]
 display_input_df = sorted_session_df[input_cols]
 
-
-# ⭐️ 사이드바 생성
+# ⭐️ 사이드바 설정
 with st.sidebar:
   st.header("⚙️ 포트폴리오 설정")
   st.write(
       "종목별 **연 예상 성장률**과 **회수율(배당 등)**을 수정하거나 종목을"
-      " 직접 관리할 수 있습니다."
-      " (현재 평가금액 큰 순서로 정렬됨)"
+      " 관리할 수 있습니다."
   )
 
   edited_df = st.data_editor(
@@ -91,14 +86,12 @@ with st.sidebar:
       key="sidebar_editor",
   )
 
-  # 사이드바 표 내용이 수정되면 곧바로 CSV 파일에 자동 덮어쓰기 저장
   if not edited_df.equals(display_input_df):
     edited_df.to_csv(DATA_FILE, index=False)
     st.session_state.portfolio = edited_df
     st.rerun()
 
-
-# ⭐️ 메인 화면: 매수/매도 거래 입력
+# ⭐️ 매수 / 매도 거래 입력
 st.subheader("🛒 매수 / 매도 거래 입력")
 with st.form("trade_form", clear_on_submit=True):
   col_t1, col_t2, col_t3 = st.columns([1, 1, 1])
@@ -120,7 +113,6 @@ with st.form("trade_form", clear_on_submit=True):
       st.error("티커를 입력해주세요.")
     else:
       current_portfolio = st.session_state.portfolio.copy()
-
       match_idx = current_portfolio[
           current_portfolio["티커"].str.upper() == trade_ticker
       ].index
@@ -152,9 +144,7 @@ with st.form("trade_form", clear_on_submit=True):
             )
       else:
         if trade_type == "매도":
-          st.error(
-              "보유하고 있지 않은 종목은 매도할 수 없습니다. 티커를 확인해주세요."
-          )
+          st.error("보유하고 있지 않은 종목은 매도할 수 없습니다.")
         else:
           new_row = pd.DataFrame({
               "티커": [trade_ticker],
@@ -166,8 +156,7 @@ with st.form("trade_form", clear_on_submit=True):
               [current_portfolio, new_row], ignore_index=True
           )
           st.success(
-              f"신규 종목 [{trade_ticker}]이(가) 추가되고 {trade_shares}주 매수가"
-              " 반영되었습니다!"
+              f"신규 종목 [{trade_ticker}]이(가) 추가되고 매수가 반영되었습니다!"
           )
 
       current_portfolio.to_csv(DATA_FILE, index=False)
@@ -179,7 +168,6 @@ st.divider()
 if not edited_df.empty:
   result_df = sorted_session_df.copy()
 
-  # 숫자로 안전하게 변환
   result_df["수량"] = pd.to_numeric(result_df["수량"], errors="coerce").fillna(
       0.0
   )
@@ -190,16 +178,12 @@ if not edited_df.empty:
       result_df["연 회수율(%)"], errors="coerce"
   ).fillna(0.0)
 
-  # 총 평가금액 합산
   total_portfolio_value = result_df["현재 평가금액(총액)"].sum()
 
   if total_portfolio_value > 0:
-    # 자산 비중 계산 (%)
     result_df["포트폴리오 비중(%)"] = (
         result_df["현재 평가금액(총액)"] / total_portfolio_value
     ) * 100
-
-    # 가중 평균 계산을 위한 기여도 산출
     result_df["가중 성장 기여도"] = (
         result_df["현재 평가금액(총액)"] * result_df["연 예상 성장률(%)"]
     )
@@ -218,7 +202,7 @@ if not edited_df.empty:
     total_weighted_growth = 0.0
     total_weighted_return = 0.0
 
-  # 결과 화면 출력
+  # 결과 테이블 출력
   st.subheader("📊 종목별 분석 및 비중 현황")
   display_df = result_df[
       [
@@ -243,56 +227,37 @@ if not edited_df.empty:
       use_container_width=True,
   )
 
-  # ⭐️ 비중 순서 정렬(내림차순)이 확실히 적용되도록 수정한 도넛 차트
+  # ⭐️ 트리맵(Treemap) 시각화 적용
   if total_portfolio_value > 0 and not result_df.empty:
-    st.subheader("🥧 종목별 포트폴리오 비중")
-    import altair as alt
+    st.subheader("🟩 종목별 포트폴리오 비중 (트리맵)")
 
-    chart_data = result_df[["티커", "포트폴리오 비중(%)"]].copy()
-    # 평가금액 순서대로 정렬된 티커 리스트 추출
-    tickers_sorted = chart_data["티커"].tolist()
+    fig, ax = plt.subplots(figsize=(10, 5))
 
-    # 조각 내부에 표시할 텍스트 (티커와 비중)
-    chart_data["라벨"] = (
-        chart_data["티커"]
-        + " ("
-        + chart_data["포트폴리오 비중(%)"].map("{:.1f}%".format)
-        + ")"
+    # 박스 안에 표시할 텍스트 라벨 생성 (티커 + 비중%)
+    labels = [
+        f"{row['티커']}\n{row['포트폴리오 비중(%)']:.1f}%"
+        for index, row in result_df.iterrows()
+    ]
+    sizes = result_df["포트폴리오 비중(%)"]
+
+    # 파스텔톤 계열 색상 자동 팔레트 지정
+    color_palette = plt.cm.Set3.colors
+
+    squarify.plot(
+        sizes=sizes,
+        label=labels,
+        color=color_palette,
+        alpha=0.85,
+        ax=ax,
+        text_kwargs={"fontsize": 11, "weight": "bold", "color": "black"},
+        edgecolor="white",
+        linewidth=2,
     )
 
-    base = alt.Chart(chart_data).encode(
-        theta=alt.Theta(
-            field="포트폴리오 비중(%)",
-            type="quantitative",
-            sort=tickers_sorted,  # 비중 순서 고정
-        ),
-        color=alt.Color(
-            field="티커",
-            type="nominal",
-            sort=tickers_sorted,
-            legend=alt.Legend(title="종목 범례", orient="bottom"),
-        ),
-    )
+    ax.axis("off")
+    st.pyplot(fig)
 
-    # 도넛 차트 아크
-    pie = base.mark_arc(innerRadius=65, outerRadius=110, stroke="#fff").encode(
-        order=alt.Order("포트폴리오 비중(%)", sort="descending"),
-        tooltip=["티커", alt.Tooltip("포트폴리오 비중(%)", format=".2f")],
-    )
-
-    # 조각 내부에 글씨가 들어가도록 배치 (비중이 너무 작으면 생략되거나 보기 좋게 출력됨)
-    text = base.mark_text(radius=88, size=10, color="white", fontWeight="bold").encode(
-        text=alt.condition(
-            alt.datum["포트폴리오 비중(%)"] > 4,  # 4% 이상인 종목만 글씨 표시
-            "라벨",
-            alt.value(""),
-        ),
-        order=alt.Order("포트폴리오 비중(%)", sort="descending"),
-    )
-
-    st.altair_chart(pie + text, use_container_width=True)
-
-  # 전체 포트폴리오 요약 지표 출력
+  # 종합 성과 요약
   st.divider()
   st.subheader("🎯 전체 포트폴리오 종합 성과 요약")
   col1, col2, col3 = st.columns(3)
