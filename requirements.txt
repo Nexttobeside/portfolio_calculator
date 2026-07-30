@@ -2,3 +2,5 @@ streamlit
 pandas
 yfinance
 altair
+squarify
+matplotlib
