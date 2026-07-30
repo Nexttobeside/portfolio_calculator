@@ -182,7 +182,7 @@ if not edited_df.empty:
 
   if total_portfolio_value > 0:
     result_df["포트폴리오 비중(%)"] = (
-        result_df["현재 평가금액(총액)"] / total_portfolio_value
+        result_df["현재 평가금액(총액)" / total_portfolio_value
     ) * 100
     result_df["가중 성장 기여도"] = (
         result_df["현재 평가금액(총액)"] * result_df["연 예상 성장률(%)"]
@@ -227,33 +227,60 @@ if not edited_df.empty:
       use_container_width=True,
   )
 
-  # ⭐️ 트리맵(Treemap) 시각화 적용
+  # ⭐️ 박스 크기(비중)에 맞춰 글자 크기가 동적으로 조절되는 트리맵
   if total_portfolio_value > 0 and not result_df.empty:
     st.subheader("🟩 종목별 포트폴리오 비중 (트리맵)")
 
     fig, ax = plt.subplots(figsize=(10, 5))
 
-    # 박스 안에 표시할 텍스트 라벨 생성 (티커 + 비중%)
-    labels = [
-        f"{row['티커']}\n{row['포트폴리오 비중(%)']:.1f}%"
-        for index, row in result_df.iterrows()
-    ]
-    sizes = result_df["포트폴리오 비중(%)"]
+    sizes = result_df["포트폴리오 비중(%)"].values
+    tickers = result_df["티커"].values
 
-    # 파스텔톤 계열 색상 자동 팔레트 지정
+    # squarify로 사각형 좌표 계산
+    normed_values = squarify.normalize_sizes(sizes, 100, 100)
+    rects = squarify.squarify(normed_values, 0, 0, 100, 100)
+
     color_palette = plt.cm.Set3.colors
 
-    squarify.plot(
-        sizes=sizes,
-        label=labels,
-        color=color_palette,
-        alpha=0.85,
-        ax=ax,
-        text_kwargs={"fontsize": 11, "weight": "bold", "color": "black"},
-        edgecolor="white",
-        linewidth=2,
-    )
+    for i, rect in enumerate(rects):
+      x = rect["x"]
+      y = rect["y"]
+      dx = rect["dx"]
+      dy = rect["dy"]
 
+      # 사각형 그리기
+      ax.bar(
+          x=x,
+          height=dy,
+          width=dx,
+          bottom=y,
+          align="edge",
+          color=color_palette[i % len(color_palette)],
+          edgecolor="white",
+          linewidth=2,
+          alpha=0.85,
+      )
+
+      # ⭐️ 박스 면적(dx * dy)에 비례해서 글자 크기 동적 조절 (최소 7, 최대 14)
+      area = dx * dy
+      font_size = max(7, min(14, int(area ** 0.45 * 2.2)))
+
+      # 비중이 너무 작아서(예: 1% 미만) 글자가 들어갈 공간이 없으면 글자 생략
+      if area > 1.5:
+        label_text = f"{tickers[i]}\n{sizes[i]:.1f}%"
+        ax.text(
+            x + dx / 2,
+            y + dy / 2,
+            label_text,
+            ha="center",
+            va="center",
+            fontsize=font_size,
+            weight="bold" if font_size > 9 else "normal",
+            color="black",
+        )
+
+    ax.set_xlim(0, 100)
+    ax.set_ylim(0, 100)
     ax.axis("off")
     st.pyplot(fig)
 
