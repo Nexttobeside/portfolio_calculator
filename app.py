@@ -286,61 +286,60 @@ if not edited_df.empty:
       area = dx * dy
       weight_val = sizes[i]
 
-      # ⭐️ 핵심 변경: 소수점(float) 단위로 완전히 연속적이고 개별적인 폰트 크기 계산
-      # 박스 면적(area)과 가로·세로 폭 중 더 작은 값을 복합적으로 반영하여 유기적으로 계산합니다.
-      dimension_factor = min(dx, dy)
-      ticker_font_size = float(
-          max(3.5, min(area**0.5 * dimension_factor * 0.35, 18.5))
-      )
-      pct_font_size = float(max(3.0, ticker_font_size * 0.72))
+      # ⭐️ 핵심 변경: 조건문 분기를 없애고, 모든 박스가 면적(area)과 폭에 비례해
+      # 0.1 단위의 소수점 폰트 크기를 개별적으로 갖도록 수식으로 직접 계산합니다.
+      base_scale = (area**0.5) * (min(dx, dy) ** 0.4)
+      ticker_font_size = float(max(3.0, min(base_scale * 2.8, 18.0)))
+      pct_font_size = float(max(2.5, ticker_font_size * 0.72))
 
-      if area >= 1.5:
-        # 충분히 큰 박스: 티커와 비중을 소수점 폰트 크기로 나누어 2줄 배치
-        ax.text(
-            x + dx / 2,
-            y + dy / 2 + (dy * 0.08),
-            f"{tickers[i]}",
-            ha="center",
-            va="center",
-            fontsize=ticker_font_size,
-            weight="bold",
-            color="white",
-        )
-        ax.text(
-            x + dx / 2,
-            y + dy / 2 - (dy * 0.10),
-            f"{weight_val:.1f}%",
-            ha="center",
-            va="center",
-            fontsize=pct_font_size,
-            weight="semibold",
-            color="#E5E7EB",
-        )
-      elif area >= 0.4:
-        # 중간 크기 박스: 소수점 폰트 크기로 한 줄 압축 표시
-        ax.text(
-            x + dx / 2,
-            y + dy / 2,
-            f"{tickers[i]}\n{weight_val:.1f}%",
-            ha="center",
-            va="center",
-            fontsize=ticker_font_size * 0.88,
-            weight="bold",
-            color="white",
-        )
-      elif area >= 0.15:
-        # 작은 박스: 비중 생략하고 티커만 소수점 폰트 크기로 표시
-        ax.text(
-            x + dx / 2,
-            y + dy / 2,
-            f"{tickers[i]}",
-            ha="center",
-            va="center",
-            fontsize=ticker_font_size * 0.95,
-            weight="bold",
-            color="white",
-        )
-      # 극도로 작고 납작한 박스(0.15 미만)는 텍스트를 아예 그려넣지 않음
+      # 너무 작고 납작하여 글자가 박스를 벗어나는 극단적인 경우에만 텍스트 생략
+      if area >= 0.12:
+        if area >= 1.2:
+          # 공간이 어느 정도 있는 박스: 티커와 비중을 소수점 단위 맞춤 크기로 두 줄 배치
+          ax.text(
+              x + dx / 2,
+              y + dy / 2 + (dy * 0.08),
+              f"{tickers[i]}",
+              ha="center",
+              va="center",
+              fontsize=ticker_font_size,
+              weight="bold",
+              color="white",
+          )
+          ax.text(
+              x + dx / 2,
+              y + dy / 2 - (dy * 0.10),
+              f"{weight_val:.1f}%",
+              ha="center",
+              va="center",
+              fontsize=pct_font_size,
+              weight="semibold",
+              color="#E5E7EB",
+          )
+        elif area >= 0.35:
+          # 다소 작은 박스: 소수점 폰트로 한 줄 압축 표시
+          ax.text(
+              x + dx / 2,
+              y + dy / 2,
+              f"{tickers[i]}\n{weight_val:.1f}%",
+              ha="center",
+              va="center",
+              fontsize=ticker_font_size * 0.9,
+              weight="bold",
+              color="white",
+          )
+        else:
+          # 더 작은 박스: 비중 생략하고 티커만 소수점 폰트로 표시
+          ax.text(
+              x + dx / 2,
+              y + dy / 2,
+              f"{tickers[i]}",
+              ha="center",
+              va="center",
+              fontsize=ticker_font_size * 0.95,
+              weight="bold",
+              color="white",
+          )
 
     ax.set_xlim(0, 100)
     ax.set_ylim(0, 100)
