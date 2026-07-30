@@ -241,7 +241,7 @@ if not edited_df.empty:
       use_container_width=True,
   )
 
-  # 트리맵 시각화 (사용자 가이드 적용: 텍스트 사각형 대각선 = 박스 대각선의 1/4)
+  # 트리맵 시각화 (텍스트 사각형 대각선 = 박스 대각선의 1/4, 간격 넓힘 및 비중 폰트 축소)
   if total_portfolio_value > 0 and not result_df.empty:
     st.subheader("🟩 종목별 비중")
 
@@ -287,26 +287,21 @@ if not edited_df.empty:
       area = dx * dy
       weight_val = sizes[i]
 
-      # ⭐️ 사용자 제시 로직 반영:
-      # 1. 종목 박스의 대각선 길이 계산: sqrt(dx^2 + dy^2)
+      # 박스 대각선 및 1/4 기준 소수점 폰트 계산
       box_diagonal = np.sqrt(dx**2 + dy**2)
-
-      # 2. 텍스트를 감싸는 사각형의 대각선 길이는 박스 대각선의 1/4
       target_text_diagonal = box_diagonal / 4.0
 
-      # 3. 텍스트 내용물(티커 + 퍼센트)의 글자 수와 줄바꿈을 고려한 종횡비 추정치 기반 폰트 크기 환산 (소수점 단위)
-      # matplotlib 폰트 크기 단위(pt)로 변환하기 위한 계수 적용
-      # 텍스트 사각형의 대각선 비율을 만족하도록 폰트 크기를 float 소수점으로 정밀 계산
       ticker_font_size = float(
           max(3.0, target_text_diagonal * 3.6 / (1.0 + 0.05 * len(tickers[i])))
       )
-      pct_font_size = float(max(2.5, ticker_font_size * 0.72))
+      # ⭐️ 비중 글씨 크기만 기존보다 조금 더 축소 (0.72 -> 0.62)
+      pct_font_size = float(max(2.2, ticker_font_size * 0.62))
 
       if area >= 1.2:
-        # 충분히 공간이 있는 박스: 티커와 비중을 소수점 개별 크기로 2줄 배치
+        # ⭐️ 티커와 비중 사이의 수직 간격을 기존보다 더 넓힘 (+0.08 -> +0.12, -0.10 -> -0.13)
         ax.text(
             x + dx / 2,
-            y + dy / 2 + (dy * 0.08),
+            y + dy / 2 + (dy * 0.12),
             f"{tickers[i]}",
             ha="center",
             va="center",
@@ -316,7 +311,7 @@ if not edited_df.empty:
         )
         ax.text(
             x + dx / 2,
-            y + dy / 2 - (dy * 0.10),
+            y + dy / 2 - (dy * 0.13),
             f"{weight_val:.1f}%",
             ha="center",
             va="center",
