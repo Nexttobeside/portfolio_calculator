@@ -240,7 +240,7 @@ if not edited_df.empty:
       use_container_width=True,
   )
 
-  # 트리맵 시각화 (밝고 선명한 팔레트 + 굵은 경계선 + 겹침 방지 텍스트 배치)
+  # 트리맵 시각화 (큰 박스는 글씨를 시원하게 키우고, 1.1% 이하 소형 박스는 글씨 크기 제어)
   if total_portfolio_value > 0 and not result_df.empty:
     st.subheader("🟩 종목별 비중")
 
@@ -252,18 +252,17 @@ if not edited_df.empty:
     normed_values = squarify.normalize_sizes(sizes, 100, 100)
     rects = squarify.squarify(normed_values, 0, 0, 100, 100)
 
-    # ⭐️ 선명하고 화사하면서도 구분이 뚜렷한 모던 파스텔 톤 팔레트
     bright_distinct_palette = [
-        "#3B82F6",  # 블루
-        "#10B981",  # 에메랄드 그린
-        "#F59E0B",  # 앰버/오렌지
-        "#EF4444",  # 레드
-        "#8B5CF6",  # 퍼플
-        "#06B6D4",  # 시안
-        "#EC4899",  # 핑크
-        "#14B8A6",  # 틸
-        "#6366F1",  # 인디고
-        "#84CC16",  # 라임
+        "#3B82F6",
+        "#10B981",
+        "#F59E0B",
+        "#EF4444",
+        "#8B5CF6",
+        "#06B6D4",
+        "#EC4899",
+        "#14B8A6",
+        "#6366F1",
+        "#84CC16",
     ]
 
     for i, rect in enumerate(rects):
@@ -279,7 +278,7 @@ if not edited_df.empty:
           bottom=y,
           align="edge",
           color=bright_distinct_palette[i % len(bright_distinct_palette)],
-          edgecolor="#FFFFFF",  # 선명하고 두꺼운 흰색 테두리로 박스 간격 극대화
+          edgecolor="#FFFFFF",
           linewidth=3.0,
           alpha=0.9,
       )
@@ -287,12 +286,24 @@ if not edited_df.empty:
       area = dx * dy
       weight_val = sizes[i]
 
-      if area > 1.2:
-        # 박스 크기에 비례하여 글씨 크기를 안전하게 계산 (겹침 방지 간격 확보)
-        ticker_size = max(9, min(15, int(area ** 0.4 * 2.2)))
-        pct_size = max(8, ticker_size - 3)
+      # ⭐️ 1.1% 이하 소형 박스 처리 (튀어나감 및 겹침 방지)
+      if weight_val <= 1.1:
+        if area > 0.2:
+          ax.text(
+              x + dx / 2,
+              y + dy / 2,
+              f"{tickers[i]}\n{weight_val:.1f}%",
+              ha="center",
+              va="center",
+              fontsize=6,  # 겹치지 않도록 매우 작게 고정
+              weight="bold",
+              color="white",
+          )
+      else:
+        # ⭐️ 큰 박스들은 크기에 비례하여 글씨를 시원하고 큼직하게 스케일업
+        ticker_size = max(11, min(24, int(area ** 0.42 * 3.2)))
+        pct_size = max(9, ticker_size - 4)
 
-        # 텍스트 박스 높이에 맞춰 간격을 적절히 띄워 겹침 원천 차단
         ax.text(
             x + dx / 2,
             y + dy / 2 + (dy * 0.08),
@@ -305,25 +316,13 @@ if not edited_df.empty:
         )
         ax.text(
             x + dx / 2,
-            y + dy / 2 - (dy * 0.10),
+            y + dy / 2 - (dy * 0.11),
             f"{weight_val:.1f}%",
             ha="center",
             va="center",
             fontsize=pct_size,
             weight="semibold",
             color="#F3F4F6",
-        )
-      elif area > 0.4:
-        # 아주 작은 박스의 경우 한 줄로 통합하여 깔끔하게 표시
-        ax.text(
-            x + dx / 2,
-            y + dy / 2,
-            f"{tickers[i]}\n{weight_val:.1f}%",
-            ha="center",
-            va="center",
-            fontsize=7,
-            weight="bold",
-            color="white",
         )
 
     ax.set_xlim(0, 100)
