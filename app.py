@@ -185,10 +185,6 @@ if not edited_df.empty:
 
   if total_portfolio_value > 0:
     result_df["포트폴리오 비중(%)"] = (
-        result_df["현재 평가금액(총액)" / total_portfolio_value]
-    ) * 100
-    # 수정: 가독성을 위한 정확한 비중 계산 구문
-    result_df["포트폴리오 비중(%)"] = (
         result_df["현재 평가금액(총액)"] / total_portfolio_value
     ) * 100
     result_df["가중 성장 기여도"] = (
@@ -359,7 +355,6 @@ if not edited_df.empty:
             weight="bold",
             color="white",
         )
-      # area가 0.15 미만으로 극단적으로 작을 경우는 텍스트를 아예 그려넣지 않아 깨짐 방지
 
     ax.set_xlim(0, 100)
     ax.set_ylim(0, 100)
