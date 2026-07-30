@@ -185,6 +185,10 @@ if not edited_df.empty:
 
   if total_portfolio_value > 0:
     result_df["포트폴리오 비중(%)"] = (
+        result_df["현재 평가금액(총액)" / total_portfolio_value]
+    ) * 100
+    # 수정: 가독성을 위한 정확한 비중 계산 구문
+    result_df["포트폴리오 비중(%)"] = (
         result_df["현재 평가금액(총액)"] / total_portfolio_value
     ) * 100
     result_df["가중 성장 기여도"] = (
@@ -240,7 +244,7 @@ if not edited_df.empty:
       use_container_width=True,
   )
 
-  # 트리맵 시각화 (면적 비례 스케일링 + 오버플로우 방지 폰트 상한선 적용)
+  # 트리맵 시각화 (Finviz/블룸버그 스타일: 면적 단계별 맞춤 텍스트 유동성 적용)
   if total_portfolio_value > 0 and not result_df.empty:
     st.subheader("🟩 종목별 비중")
 
@@ -279,53 +283,83 @@ if not edited_df.empty:
           align="edge",
           color=bright_distinct_palette[i % len(bright_distinct_palette)],
           edgecolor="#FFFFFF",
-          linewidth=3.0,
-          alpha=0.9,
+          linewidth=2.5,
+          alpha=0.92,
       )
 
       area = dx * dy
       weight_val = sizes[i]
 
-      if area > 0.3:
-        # ⭐️ 박스 크기에 비례하여 커지되, 박스를 탈출하지 않도록 상한선(max)을 엄격하게 설정
-        calculated_size = int(area ** 0.5 * 2.2)
-        ticker_size = max(6, min(calculated_size, 14))
-        pct_size = max(5, int(ticker_size * 0.75))
-
-        if area > 2.0 and ticker_size >= 9:
-          # 충분히 큰 박스는 티커와 비중을 위아래로 나누어 배치
-          ax.text(
-              x + dx / 2,
-              y + dy / 2 + (dy * 0.08),
-              f"{tickers[i]}",
-              ha="center",
-              va="center",
-              fontsize=ticker_size,
-              weight="bold",
-              color="white",
-          )
-          ax.text(
-              x + dx / 2,
-              y + dy / 2 - (dy * 0.10),
-              f"{weight_val:.1f}%",
-              ha="center",
-              va="center",
-              fontsize=pct_size,
-              weight="semibold",
-              color="#F3F4F6",
-          )
-        else:
-          # 중간 및 작은 박스는 한 줄로 깔끔하게 축소 표시
-          ax.text(
-              x + dx / 2,
-              y + dy / 2,
-              f"{tickers[i]}\n{weight_val:.1f}%",
-              ha="center",
-              va="center",
-              fontsize=ticker_size,
-              weight="bold",
-              color="white",
-          )
+      # ⭐️ 박스 면적에 따른 4단계 유동적 텍스트 렌더링 (Finviz 방식)
+      if area >= 3.5:
+        # [1단계] 아주 큰 박스: 티커와 비중을 시원하게 분리 배치
+        ax.text(
+            x + dx / 2,
+            y + dy / 2 + (dy * 0.08),
+            f"{tickers[i]}",
+            ha="center",
+            va="center",
+            fontsize=15,
+            weight="bold",
+            color="white",
+        )
+        ax.text(
+            x + dx / 2,
+            y + dy / 2 - (dy * 0.10),
+            f"{weight_val:.1f}%",
+            ha="center",
+            va="center",
+            fontsize=11,
+            weight="semibold",
+            color="#E5E7EB",
+        )
+      elif area >= 1.5:
+        # [2단계] 중간 박스: 적당한 크기로 두 줄 배치
+        ax.text(
+            x + dx / 2,
+            y + dy / 2 + (dy * 0.06),
+            f"{tickers[i]}",
+            ha="center",
+            va="center",
+            fontsize=11,
+            weight="bold",
+            color="white",
+        )
+        ax.text(
+            x + dx / 2,
+            y + dy / 2 - (dy * 0.10),
+            f"{weight_val:.1f}%",
+            ha="center",
+            va="center",
+            fontsize=8,
+            weight="semibold",
+            color="#E5E7EB",
+        )
+      elif area >= 0.5:
+        # [3단계] 작은 박스: 한 줄로 압축하여 티커와 비중 표시
+        ax.text(
+            x + dx / 2,
+            y + dy / 2,
+            f"{tickers[i]}\n{weight_val:.1f}%",
+            ha="center",
+            va="center",
+            fontsize=7,
+            weight="bold",
+            color="white",
+        )
+      elif area >= 0.15:
+        # [4단계] 너무 작고 납작한 박스: 겹침 방지를 위해 비중은 과감히 생략하고 티커만 표시
+        ax.text(
+            x + dx / 2,
+            y + dy / 2,
+            f"{tickers[i]}",
+            ha="center",
+            va="center",
+            fontsize=6,
+            weight="bold",
+            color="white",
+        )
+      # area가 0.15 미만으로 극단적으로 작을 경우는 텍스트를 아예 그려넣지 않아 깨짐 방지
 
     ax.set_xlim(0, 100)
     ax.set_ylim(0, 100)
