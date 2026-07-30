@@ -205,7 +205,7 @@ if not edited_df.empty:
     total_weighted_growth = 0.0
     total_weighted_return = 0.0
 
-  # ⭐️ 컬럼명을 사용자 요청대로 변경하기 위한 복사본 생성
+  # 컬럼명을 사용자 요청대로 변경하기 위한 복사본 생성
   table_df = result_df.copy()
   table_df = table_df.rename(
       columns={
@@ -240,7 +240,7 @@ if not edited_df.empty:
       use_container_width=True,
   )
 
-  # 트리맵 시각화 (제목 변경 완료)
+  # 트리맵 시각화 (증권 앱 스타일에 맞춘 차분한 쿨톤/모던 컬러 팔레트 적용)
   if total_portfolio_value > 0 and not result_df.empty:
     st.subheader("🟩 종목별 비중")
 
@@ -252,7 +252,19 @@ if not edited_df.empty:
     normed_values = squarify.normalize_sizes(sizes, 100, 100)
     rects = squarify.squarify(normed_values, 0, 0, 100, 100)
 
-    color_palette = plt.cm.Set3.colors
+    # ⭐️ 채도를 낮추고 블루·슬레이트·차분한 네이비 톤 계열로 조합한 세련된 팔레트
+    fin_palette = [
+        "#2C3E50",  # 진한 슬레이트 네이비
+        "#34495E",  # 차분한 다크 블루그레이
+        "#4A6572",  # 스틸 블루
+        "#5D6D7E",  # 뮤트 블루그레이
+        "#1B4F72",  # 딥 네이비
+        "#2874A6",  # 미드나잇 블루
+        "#5499C7",  # 소프트 블루
+        "#85929E",  # 쿨 그레이
+        "#117A65",  # 딥 다크 틸 (포인트용 차분한 청록)
+        "#16A085",  # 뮤트 틸
+    ]
 
     for i, rect in enumerate(rects):
       x = rect["x"]
@@ -266,10 +278,10 @@ if not edited_df.empty:
           width=dx,
           bottom=y,
           align="edge",
-          color=color_palette[i % len(color_palette)],
-          edgecolor="white",
-          linewidth=2,
-          alpha=0.85,
+          color=fin_palette[i % len(fin_palette)],
+          edgecolor="#F8F9FA",  # 경계선은 아주 밝고 깔끔한 톤으로 처리
+          linewidth=1.5,
+          alpha=0.9,
       )
 
       area = dx * dy
@@ -290,7 +302,7 @@ if not edited_df.empty:
             va="center",
             fontsize=font_size,
             weight="bold" if font_size > 8 else "normal",
-            color="black",
+            color="white",  # 어두운 배경에 맞춰 글씨색을 흰색으로 변경해 가독성과 세련미 극대화
         )
 
     ax.set_xlim(0, 100)
