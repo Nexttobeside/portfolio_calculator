@@ -55,6 +55,7 @@ def get_sorted_portfolio(df):
         price = 0.0
     current_prices_temp[ticker_raw] = price
 
+  # 내부 연산을 위해 임시 컬럼명 유지 후, 출력 시점에 변경
   temp_df["실시간 주당 현재가"] = temp_df["티커"].map(current_prices_temp)
   temp_df["수량"] = pd.to_numeric(temp_df["수량"], errors="coerce").fillna(0.0)
   temp_df["현재 평가금액(총액)"] = temp_df["수량"] * temp_df["실시간 주당 현재가"]
@@ -91,7 +92,7 @@ with st.sidebar:
     st.session_state.portfolio = edited_df
     st.rerun()
 
-# ⭐️ 매수 / 매도 거래 입력 (수량 입력창 단위를 정수형 step=1, format="%d"로 수정)
+# ⭐️ 매수 / 매도 거래 입력
 st.subheader("🛒 매수 / 매도 거래 입력")
 with st.form("trade_form", clear_on_submit=True):
   col_t1, col_t2, col_t3 = st.columns([1, 1, 1])
@@ -204,14 +205,23 @@ if not edited_df.empty:
     total_weighted_growth = 0.0
     total_weighted_return = 0.0
 
+  # ⭐️ 컬럼명을 사용자 요청대로 변경하기 위한 복사본 생성
+  table_df = result_df.copy()
+  table_df = table_df.rename(
+      columns={
+          "실시간 주당 현재가": "현재가($)",
+          "현재 평가금액(총액)": "평가금액($)",
+      }
+  )
+
   # 결과 테이블 출력
   st.subheader("📊 종목별 분석 및 비중 현황")
-  display_df = result_df[
+  display_df = table_df[
       [
           "티커",
           "수량",
-          "실시간 주당 현재가",
-          "현재 평가금액(총액)",
+          "현재가($)",
+          "평가금액($)",
           "포트폴리오 비중(%)",
           "연 예상 성장률(%)",
           "연 회수율(%)",
@@ -220,9 +230,9 @@ if not edited_df.empty:
 
   st.dataframe(
       display_df.style.format({
-          "수량": "{:,.0f}",  # 테이블 표시에서도 수량을 정수 형태로 깔끔하게 표시
-          "실시간 주당 현재가": "{:,.2f}",
-          "현재 평가금액(총액)": "{:,.2f}",
+          "수량": "{:,.0f}",
+          "현재가($)": "{:,.2f}",
+          "평가금액($)": "{:,.2f}",
           "포트폴리오 비중(%)": "{:.2f}%",
           "연 예상 성장률(%)": "{:.2f}%",
           "연 회수율(%)": "{:.2f}%",
