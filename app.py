@@ -241,7 +241,7 @@ if not edited_df.empty:
       use_container_width=True,
   )
 
-  # 트리맵 시각화 (텍스트 사각형 대각선 = 박스 대각선의 1/4, 간격 넓힘 및 비중 폰트 축소)
+  # 트리맵 시각화 (티커 90%, 비중 80% 축소 반영)
   if total_portfolio_value > 0 and not result_df.empty:
     st.subheader("🟩 종목별 비중")
 
@@ -287,18 +287,25 @@ if not edited_df.empty:
       area = dx * dy
       weight_val = sizes[i]
 
-      # 박스 대각선 및 1/4 기준 소수점 폰트 계산
+      # 박스 대각선 및 1/4 기준 계산
       box_diagonal = np.sqrt(dx**2 + dy**2)
       target_text_diagonal = box_diagonal / 4.0
 
+      # ⭐️ 티커 크기: 기존 대비 90%로 조정
       ticker_font_size = float(
-          max(3.0, target_text_diagonal * 3.6 / (1.0 + 0.05 * len(tickers[i])))
+          max(
+              2.5,
+              target_text_diagonal
+              * 3.6
+              / (1.0 + 0.05 * len(tickers[i]))
+              * 0.90,
+          )
       )
-      # ⭐️ 비중 글씨 크기만 기존보다 조금 더 축소 (0.72 -> 0.62)
-      pct_font_size = float(max(2.2, ticker_font_size * 0.62))
+      # ⭐️ 비중 크기: 기존 대비 80%로 조정 (이전 대비 0.62 -> 0.50)
+      pct_font_size = float(max(2.0, ticker_font_size * 0.80))
 
       if area >= 1.2:
-        # ⭐️ 티커와 비중 사이의 수직 간격을 기존보다 더 넓힘 (+0.08 -> +0.12, -0.10 -> -0.13)
+        # 티커와 비중 2줄 배치 (간격 유지)
         ax.text(
             x + dx / 2,
             y + dy / 2 + (dy * 0.12),
@@ -320,7 +327,7 @@ if not edited_df.empty:
             color="#E5E7EB",
         )
       elif area >= 0.35:
-        # 다소 작은 박스: 소수점 폰트로 한 줄 압축 표시
+        # 다소 작은 박스: 한 줄 압축 표시
         ax.text(
             x + dx / 2,
             y + dy / 2,
@@ -332,7 +339,7 @@ if not edited_df.empty:
             color="white",
         )
       elif area >= 0.12:
-        # 작은 박스: 비중 생략하고 티커만 소수점 폰트로 표시
+        # 작은 박스: 티커만 표시
         ax.text(
             x + dx / 2,
             y + dy / 2,
@@ -343,7 +350,6 @@ if not edited_df.empty:
             weight="bold",
             color="white",
         )
-      # 극도로 작고 납작한 박스는 생략
 
     ax.set_xlim(0, 100)
     ax.set_ylim(0, 100)
