@@ -181,7 +181,6 @@ if not edited_df.empty:
   total_portfolio_value = result_df["현재 평가금액(총액)"].sum()
 
   if total_portfolio_value > 0:
-    # ⭐️ 괄호 오류 수정 완료된 부분
     result_df["포트폴리오 비중(%)"] = (
         result_df["현재 평가금액(총액)"] / total_portfolio_value
     ) * 100
@@ -228,7 +227,7 @@ if not edited_df.empty:
       use_container_width=True,
   )
 
-  # ⭐️ 박스 크기에 맞춰 글자 크기가 동적으로 조절되는 트리맵
+  # ⭐️ 작은 박스(1~2%대) 글자 튀어나옴 방지 로직이 적용된 트리맵
   if total_portfolio_value > 0 and not result_df.empty:
     st.subheader("🟩 종목별 포트폴리오 비중 (트리맵)")
 
@@ -261,10 +260,22 @@ if not edited_df.empty:
       )
 
       area = dx * dy
-      font_size = max(7, min(14, int(area ** 0.45 * 2.2)))
+      weight_val = sizes[i]
 
-      if area > 1.5:
-        label_text = f"{tickers[i]}\n{sizes[i]:.1f}%"
+      # ⭐️ 박스 크기와 비중(%)에 따라 글자 크기를 엄격하게 제한
+      if weight_val < 2.0:
+        font_size = 6  # 2% 미만 작은 박스는 아주 작은 글씨로 고정
+      else:
+        font_size = max(8, min(14, int(area ** 0.45 * 2.2)))
+
+      # 너무 극단적으로 작은 박스(0.5% 미만 등)가 아닐 경우에만 표시
+      if area > 0.8:
+        # 비중이 너무 작으면 줄바꿈 없이 티커만 표시하거나 간결하게 표시
+        if weight_val < 2.0:
+          label_text = f"{tickers[i]}\n{weight_val:.1f}%"
+        else:
+          label_text = f"{tickers[i]}\n{weight_val:.1f}%"
+
         ax.text(
             x + dx / 2,
             y + dy / 2,
@@ -272,7 +283,7 @@ if not edited_df.empty:
             ha="center",
             va="center",
             fontsize=font_size,
-            weight="bold" if font_size > 9 else "normal",
+            weight="bold" if font_size > 8 else "normal",
             color="black",
         )
 
