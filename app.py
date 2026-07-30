@@ -240,7 +240,7 @@ if not edited_df.empty:
       use_container_width=True,
   )
 
-  # 트리맵 시각화 (블룸버그 맵 스타일: 딥하고 묵직한 배경색 + 티커 강조 폰트 구조)
+  # 트리맵 시각화 (밝고 선명한 팔레트 + 굵은 경계선 + 겹침 방지 텍스트 배치)
   if total_portfolio_value > 0 and not result_df.empty:
     st.subheader("🟩 종목별 비중")
 
@@ -252,18 +252,18 @@ if not edited_df.empty:
     normed_values = squarify.normalize_sizes(sizes, 100, 100)
     rects = squarify.squarify(normed_values, 0, 0, 100, 100)
 
-    # ⭐️ 블룸버그 터미널 느낌의 깊고 어두운 채도의 전문 금융 톤 팔레트
-    bloomberg_deep_palette = [
-        "#0D3B2E",  # 딥 포레스트 그린 (묵직한 상승 톤)
-        "#1B3B6F",  # 딥 네이비 블루
-        "#3F2A56",  # 딥 로열 퍼플
-        "#4A2E1B",  # 딥 브라운 / 테라코타
-        "#1C3144",  # 슬레이트 차콜 네이비
-        "#2C4C3E",  # 뮤트 딥 틸
-        "#502F4C",  # 딥 플럼
-        "#1E3D59",  # 인디고 다크
-        "#3B3A36",  # 시크한 다크 스톤 그레이
-        "#1F4068",  # 미드나잇 블루 다크
+    # ⭐️ 선명하고 화사하면서도 구분이 뚜렷한 모던 파스텔 톤 팔레트
+    bright_distinct_palette = [
+        "#3B82F6",  # 블루
+        "#10B981",  # 에메랄드 그린
+        "#F59E0B",  # 앰버/오렌지
+        "#EF4444",  # 레드
+        "#8B5CF6",  # 퍼플
+        "#06B6D4",  # 시안
+        "#EC4899",  # 핑크
+        "#14B8A6",  # 틸
+        "#6366F1",  # 인디고
+        "#84CC16",  # 라임
     ]
 
     for i, rect in enumerate(rects):
@@ -278,45 +278,52 @@ if not edited_df.empty:
           width=dx,
           bottom=y,
           align="edge",
-          color=bloomberg_deep_palette[i % len(bloomberg_deep_palette)],
-          edgecolor="#0B0F19",  # 어두운 경계선으로 단단하게 구분
-          linewidth=2.5,
-          alpha=0.98,
+          color=bright_distinct_palette[i % len(bright_distinct_palette)],
+          edgecolor="#FFFFFF",  # 선명하고 두꺼운 흰색 테두리로 박스 간격 극대화
+          linewidth=3.0,
+          alpha=0.9,
       )
 
       area = dx * dy
       weight_val = sizes[i]
 
-      if weight_val < 2.0:
-        ticker_size = 7
-        pct_size = 5
-      else:
-        # 블룸버그처럼 블록 크기에 비례하되 티커를 훨씬 굵고 크게 설정
-        base_scale = max(8, min(16, int(area ** 0.45 * 2.5)))
-        ticker_size = base_scale + 2
-        pct_size = base_scale - 2
+      if area > 1.2:
+        # 박스 크기에 비례하여 글씨 크기를 안전하게 계산 (겹침 방지 간격 확보)
+        ticker_size = max(9, min(15, int(area ** 0.4 * 2.2)))
+        pct_size = max(8, ticker_size - 3)
 
-      if area > 0.8:
-        # ⭐️ 티커와 비중 줄바꿈 처리 및 폰트 크기 차별화 (티커: 굵고 큼, 비중: 상대적으로 작음)
+        # 텍스트 박스 높이에 맞춰 간격을 적절히 띄워 겹침 원천 차단
         ax.text(
             x + dx / 2,
-            y + dy / 2 + (dy * 0.04),  # 티커를 살짝 위로
+            y + dy / 2 + (dy * 0.08),
             f"{tickers[i]}",
             ha="center",
             va="center",
             fontsize=ticker_size,
-            weight="heavy",
+            weight="bold",
             color="white",
         )
         ax.text(
             x + dx / 2,
-            y + dy / 2 - (dy * 0.08),  # 비중을 살짝 아래로
+            y + dy / 2 - (dy * 0.10),
             f"{weight_val:.1f}%",
             ha="center",
             va="center",
             fontsize=pct_size,
+            weight="semibold",
+            color="#F3F4F6",
+        )
+      elif area > 0.4:
+        # 아주 작은 박스의 경우 한 줄로 통합하여 깔끔하게 표시
+        ax.text(
+            x + dx / 2,
+            y + dy / 2,
+            f"{tickers[i]}\n{weight_val:.1f}%",
+            ha="center",
+            va="center",
+            fontsize=7,
             weight="bold",
-            color="#E2E8F0",  # 약간 은은한 실버 화이트 톤으로 위계 구분
+            color="white",
         )
 
     ax.set_xlim(0, 100)
