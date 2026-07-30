@@ -91,7 +91,7 @@ with st.sidebar:
     st.session_state.portfolio = edited_df
     st.rerun()
 
-# ⭐️ 매수 / 매도 거래 입력 (기본 수량을 0으로 수정)
+# ⭐️ 매수 / 매도 거래 입력 (수량 입력창 단위를 정수형 step=1, format="%d"로 수정)
 st.subheader("🛒 매수 / 매도 거래 입력")
 with st.form("trade_form", clear_on_submit=True):
   col_t1, col_t2, col_t3 = st.columns([1, 1, 1])
@@ -103,7 +103,7 @@ with st.form("trade_form", clear_on_submit=True):
     trade_type = st.selectbox("거래 구분", ["매수", "매도"])
   with col_t3:
     trade_shares = st.number_input(
-        "수량", min_value=0.0, value=0.0, step=1.0, format="%.4f"
+        "수량", min_value=0, value=0, step=1, format="%d"
     )
 
   submit_trade = st.form_submit_button("거래 반영하기")
@@ -150,7 +150,7 @@ with st.form("trade_form", clear_on_submit=True):
         else:
           new_row = pd.DataFrame({
               "티커": [trade_ticker],
-              "수량": [trade_shares],
+              "수량": [float(trade_shares)],
               "연 예상 성장률(%)": [10.0],
               "연 회수율(%)": [0.0],
           })
@@ -220,6 +220,7 @@ if not edited_df.empty:
 
   st.dataframe(
       display_df.style.format({
+          "수량": "{:,.0f}",  # 테이블 표시에서도 수량을 정수 형태로 깔끔하게 표시
           "실시간 주당 현재가": "{:,.2f}",
           "현재 평가금액(총액)": "{:,.2f}",
           "포트폴리오 비중(%)": "{:.2f}%",
