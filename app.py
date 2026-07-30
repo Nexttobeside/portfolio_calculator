@@ -91,7 +91,7 @@ with st.sidebar:
     st.session_state.portfolio = edited_df
     st.rerun()
 
-# ⭐️ 매수 / 매도 거래 입력
+# ⭐️ 매수 / 매도 거래 입력 (기본 수량을 0으로 수정)
 st.subheader("🛒 매수 / 매도 거래 입력")
 with st.form("trade_form", clear_on_submit=True):
   col_t1, col_t2, col_t3 = st.columns([1, 1, 1])
@@ -103,7 +103,7 @@ with st.form("trade_form", clear_on_submit=True):
     trade_type = st.selectbox("거래 구분", ["매수", "매도"])
   with col_t3:
     trade_shares = st.number_input(
-        "수량", min_value=0.0001, step=1.0, format="%.4f"
+        "수량", min_value=0.0, value=0.0, step=1.0, format="%.4f"
     )
 
   submit_trade = st.form_submit_button("거래 반영하기")
@@ -111,6 +111,8 @@ with st.form("trade_form", clear_on_submit=True):
   if submit_trade:
     if not trade_ticker:
       st.error("티커를 입력해주세요.")
+    elif trade_shares <= 0:
+      st.error("수량은 0보다 커야 합니다.")
     else:
       current_portfolio = st.session_state.portfolio.copy()
       match_idx = current_portfolio[
@@ -227,7 +229,7 @@ if not edited_df.empty:
       use_container_width=True,
   )
 
-  # ⭐️ 작은 박스(1~2%대) 글자 튀어나옴 방지 로직이 적용된 트리맵
+  # 트리맵 시각화
   if total_portfolio_value > 0 and not result_df.empty:
     st.subheader("🟩 종목별 포트폴리오 비중 (트리맵)")
 
@@ -262,20 +264,13 @@ if not edited_df.empty:
       area = dx * dy
       weight_val = sizes[i]
 
-      # ⭐️ 박스 크기와 비중(%)에 따라 글자 크기를 엄격하게 제한
       if weight_val < 2.0:
-        font_size = 6  # 2% 미만 작은 박스는 아주 작은 글씨로 고정
+        font_size = 6
       else:
         font_size = max(8, min(14, int(area ** 0.45 * 2.2)))
 
-      # 너무 극단적으로 작은 박스(0.5% 미만 등)가 아닐 경우에만 표시
       if area > 0.8:
-        # 비중이 너무 작으면 줄바꿈 없이 티커만 표시하거나 간결하게 표시
-        if weight_val < 2.0:
-          label_text = f"{tickers[i]}\n{weight_val:.1f}%"
-        else:
-          label_text = f"{tickers[i]}\n{weight_val:.1f}%"
-
+        label_text = f"{tickers[i]}\n{weight_val:.1f}%"
         ax.text(
             x + dx / 2,
             y + dy / 2,
