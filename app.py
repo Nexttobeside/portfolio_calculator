@@ -241,7 +241,7 @@ if not edited_df.empty:
       use_container_width=True,
   )
 
-  # 트리맵 시각화 (티커 90%, 비중 80% 독립 축소 적용)
+  # 트리맵 시각화 (티커 90%, 비중 90% 추가 축소 반영)
   if total_portfolio_value > 0 and not result_df.empty:
     st.subheader("🟩 종목별 비중")
 
@@ -291,7 +291,7 @@ if not edited_df.empty:
       box_diagonal = np.sqrt(dx**2 + dy**2)
       target_text_diagonal = box_diagonal / 4.0
 
-      # ⭐️ 티커 크기: 대각선 1/4 기준에서 90%로 설정
+      # 티커 크기: 대각선 1/4 기준에서 90%
       ticker_font_size = float(
           max(
               2.5,
@@ -301,9 +301,9 @@ if not edited_df.empty:
               * 0.90,
           )
       )
-      # ⭐️ 비중 크기: 티커와 완전히 독립적으로 대각선 1/4 기준에서 확실하게 작게(80% 수준) 설정
+      # ⭐️ 비중 크기: 직전 비중 크기의 90% 적용 (계수 2.5 -> 2.25)
       pct_font_size = float(
-          max(2.0, target_text_diagonal * 2.5 / (1.0 + 0.05 * 5) * 0.80)
+          max(2.0, target_text_diagonal * 2.25 / (1.0 + 0.05 * 5) * 0.90)
       )
 
       if area >= 1.2:
