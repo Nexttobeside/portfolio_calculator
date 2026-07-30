@@ -1,5 +1,6 @@
 import os
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import squarify
 import streamlit as st
@@ -240,7 +241,7 @@ if not edited_df.empty:
       use_container_width=True,
   )
 
-  # 트리맵 시각화 (완전한 소수점 연속 유동 폰트 스케일링 적용)
+  # 트리맵 시각화 (사용자 가이드 적용: 텍스트 사각형 대각선 = 박스 대각선의 1/4)
   if total_portfolio_value > 0 and not result_df.empty:
     st.subheader("🟩 종목별 비중")
 
@@ -286,60 +287,68 @@ if not edited_df.empty:
       area = dx * dy
       weight_val = sizes[i]
 
-      # ⭐️ 핵심 변경: 조건문 분기를 없애고, 모든 박스가 면적(area)과 폭에 비례해
-      # 0.1 단위의 소수점 폰트 크기를 개별적으로 갖도록 수식으로 직접 계산합니다.
-      base_scale = (area**0.5) * (min(dx, dy) ** 0.4)
-      ticker_font_size = float(max(3.0, min(base_scale * 2.8, 18.0)))
+      # ⭐️ 사용자 제시 로직 반영:
+      # 1. 종목 박스의 대각선 길이 계산: sqrt(dx^2 + dy^2)
+      box_diagonal = np.sqrt(dx**2 + dy**2)
+
+      # 2. 텍스트를 감싸는 사각형의 대각선 길이는 박스 대각선의 1/4
+      target_text_diagonal = box_diagonal / 4.0
+
+      # 3. 텍스트 내용물(티커 + 퍼센트)의 글자 수와 줄바꿈을 고려한 종횡비 추정치 기반 폰트 크기 환산 (소수점 단위)
+      # matplotlib 폰트 크기 단위(pt)로 변환하기 위한 계수 적용
+      # 텍스트 사각형의 대각선 비율을 만족하도록 폰트 크기를 float 소수점으로 정밀 계산
+      ticker_font_size = float(
+          max(3.0, target_text_diagonal * 3.6 / (1.0 + 0.05 * len(tickers[i])))
+      )
       pct_font_size = float(max(2.5, ticker_font_size * 0.72))
 
-      # 너무 작고 납작하여 글자가 박스를 벗어나는 극단적인 경우에만 텍스트 생략
-      if area >= 0.12:
-        if area >= 1.2:
-          # 공간이 어느 정도 있는 박스: 티커와 비중을 소수점 단위 맞춤 크기로 두 줄 배치
-          ax.text(
-              x + dx / 2,
-              y + dy / 2 + (dy * 0.08),
-              f"{tickers[i]}",
-              ha="center",
-              va="center",
-              fontsize=ticker_font_size,
-              weight="bold",
-              color="white",
-          )
-          ax.text(
-              x + dx / 2,
-              y + dy / 2 - (dy * 0.10),
-              f"{weight_val:.1f}%",
-              ha="center",
-              va="center",
-              fontsize=pct_font_size,
-              weight="semibold",
-              color="#E5E7EB",
-          )
-        elif area >= 0.35:
-          # 다소 작은 박스: 소수점 폰트로 한 줄 압축 표시
-          ax.text(
-              x + dx / 2,
-              y + dy / 2,
-              f"{tickers[i]}\n{weight_val:.1f}%",
-              ha="center",
-              va="center",
-              fontsize=ticker_font_size * 0.9,
-              weight="bold",
-              color="white",
-          )
-        else:
-          # 더 작은 박스: 비중 생략하고 티커만 소수점 폰트로 표시
-          ax.text(
-              x + dx / 2,
-              y + dy / 2,
-              f"{tickers[i]}",
-              ha="center",
-              va="center",
-              fontsize=ticker_font_size * 0.95,
-              weight="bold",
-              color="white",
-          )
+      if area >= 1.2:
+        # 충분히 공간이 있는 박스: 티커와 비중을 소수점 개별 크기로 2줄 배치
+        ax.text(
+            x + dx / 2,
+            y + dy / 2 + (dy * 0.08),
+            f"{tickers[i]}",
+            ha="center",
+            va="center",
+            fontsize=ticker_font_size,
+            weight="bold",
+            color="white",
+        )
+        ax.text(
+            x + dx / 2,
+            y + dy / 2 - (dy * 0.10),
+            f"{weight_val:.1f}%",
+            ha="center",
+            va="center",
+            fontsize=pct_font_size,
+            weight="semibold",
+            color="#E5E7EB",
+        )
+      elif area >= 0.35:
+        # 다소 작은 박스: 소수점 폰트로 한 줄 압축 표시
+        ax.text(
+            x + dx / 2,
+            y + dy / 2,
+            f"{tickers[i]}\n{weight_val:.1f}%",
+            ha="center",
+            va="center",
+            fontsize=ticker_font_size * 0.9,
+            weight="bold",
+            color="white",
+        )
+      elif area >= 0.12:
+        # 작은 박스: 비중 생략하고 티커만 소수점 폰트로 표시
+        ax.text(
+            x + dx / 2,
+            y + dy / 2,
+            f"{tickers[i]}",
+            ha="center",
+            va="center",
+            fontsize=ticker_font_size * 0.95,
+            weight="bold",
+            color="white",
+        )
+      # 극도로 작고 납작한 박스는 생략
 
     ax.set_xlim(0, 100)
     ax.set_ylim(0, 100)
