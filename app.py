@@ -240,7 +240,7 @@ if not edited_df.empty:
       use_container_width=True,
   )
 
-  # 트리맵 시각화 (박스 면적에 정확히 비례하는 폰트 스케일 적용)
+  # 트리맵 시각화 (면적 비례 스케일링 + 오버플로우 방지 폰트 상한선 적용)
   if total_portfolio_value > 0 and not result_df.empty:
     st.subheader("🟩 종목별 비중")
 
@@ -287,12 +287,13 @@ if not edited_df.empty:
       weight_val = sizes[i]
 
       if area > 0.3:
-        # ⭐️ 박스 면적(area)의 제곱근에 정확히 비례하도록 폰트 크기를 설정하여 모든 박스에서 글씨가 차지하는 시각적 비율을 동일하게 유지
-        ticker_size = max(5, int(area ** 0.5 * 2.8))
-        pct_size = max(4, int(ticker_size * 0.75))
+        # ⭐️ 박스 크기에 비례하여 커지되, 박스를 탈출하지 않도록 상한선(max)을 엄격하게 설정
+        calculated_size = int(area ** 0.5 * 2.2)
+        ticker_size = max(6, min(calculated_size, 14))
+        pct_size = max(5, int(ticker_size * 0.75))
 
-        if area > 1.0:
-          # 충분히 큰 박스는 티커와 비중을 위아래 두 줄로 배치
+        if area > 2.0 and ticker_size >= 9:
+          # 충분히 큰 박스는 티커와 비중을 위아래로 나누어 배치
           ax.text(
               x + dx / 2,
               y + dy / 2 + (dy * 0.08),
@@ -314,7 +315,7 @@ if not edited_df.empty:
               color="#F3F4F6",
           )
         else:
-          # 작은 박스는 한 줄로 압축하되 동일 비율 크기 적용
+          # 중간 및 작은 박스는 한 줄로 깔끔하게 축소 표시
           ax.text(
               x + dx / 2,
               y + dy / 2,
