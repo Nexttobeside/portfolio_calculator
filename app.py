@@ -143,7 +143,7 @@ col3.metric("포트폴리오 연 예상 회수율", f"{total_weighted_return:.2f
 st.divider()
 
 
-# ⭐️ 사이드바: 매수/매도 거래 입력을 상단으로 배치하고, 포트폴리오 설정을 하단으로 배치
+# ⭐️ 사이드바: 매수/매도 거래 입력 및 직관적으로 변경된 종목별 설정 배치
 with st.sidebar:
   st.header("🛒 매수 / 매도 거래 입력")
   with st.form("trade_form", clear_on_submit=True):
@@ -242,9 +242,9 @@ with st.sidebar:
 
   st.divider()
 
-  st.header("⚙️ 포트폴리오 설정")
+  st.header("⚙️ 종목별 성장률 및 회수율 설정")
   st.write(
-      "종목별 **연 예상 성장률**과 **회수율(배당 등)**을 미리 설정하거나 종목을"
+      "종목별 **연 예상 성장률**과 **회수율(배당 등)**을 직접 수정하거나"
       " 관리할 수 있습니다."
   )
 
