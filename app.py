@@ -1,3 +1,4 @@
+import sqlite3
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -17,20 +18,34 @@ st.write(
     " 확인하세요."
 )
 
-# Streamlit 내장 SQL 연결 (클라우드 DB 활용)
-conn = st.connection("sql", type="sql")
+DB_FILE = "portfolio.db"
 
-# 데이터베이스 테이블 초기화 (최초 실행 시 기본값 생성)
-with conn.session as s:
-  s.execute(
+
+# SQLite 데이터베이스 연결 및 테이블 초기화
+def init_db():
+  conn = sqlite3.connect(DB_FILE)
+  cursor = conn.cursor()
+  cursor.execute(
       "CREATE TABLE IF NOT EXISTS portfolio (티커 TEXT, 수량 REAL, [연"
       " 예상 성장률(%)] REAL, [연 회수율(%)] REAL)"
   )
-  s.commit()
+  conn.commit()
+  conn.close()
+
+
+init_db()
+
 
 # 데이터 로드 함수
 def load_data():
-  df = conn.query("SELECT * FROM portfolio", ttl=0)
+  conn = sqlite3.connect(DB_FILE)
+  df = pd.read_sql(
+      "SELECT 티커, 수량, \"연 예상 성장률(%)\", \"연 회수율(%)\" FROM"
+      " portfolio",
+      conn,
+  )
+  conn.close()
+
   if df.empty:
     default_df = pd.DataFrame({
         "티커": ["AAPL", "TSLA", "MSFT"],
@@ -38,39 +53,16 @@ def load_data():
         "연 예상 성장률(%)": [12.0, 20.0, 15.0],
         "연 회수율(%)": [0.5, 0.0, 0.7],
     })
-    # DB에 기본값 저장
-    with conn.session as s:
-      s.execute("DELETE FROM portfolio")
-      for _, row in default_df.iterrows():
-        s.execute(
-            "INSERT INTO portfolio VALUES (:ticker, :shares, :growth, :return)",
-            {
-                "ticker": row["티커"],
-                "shares": row["수량"],
-                "growth": row["연 예상 성장률(%)"],
-                "return": row["연 회수율(%)"],
-            },
-        )
-      s.commit()
-    df = default_df
+    save_data(default_df)
+    return default_df
   return df
 
 
 # 데이터 저장 함수
 def save_data(df):
-  with conn.session as s:
-    s.execute("DELETE FROM portfolio")
-    for _, row in df.iterrows():
-      s.execute(
-          "INSERT INTO portfolio VALUES (:ticker, :shares, :growth, :return)",
-          {
-              "ticker": row["티커"],
-              "shares": row["수량"],
-              "growth": row["연 예상 성장률(%)"],
-              "return": row["연 회수율(%)"],
-          },
-      )
-    s.commit()
+  conn = sqlite3.connect(DB_FILE)
+  df.to_sql("portfolio", conn, if_exists="replace", index=False)
+  conn.close()
 
 
 if (
@@ -101,7 +93,7 @@ def get_current_prices(tickers):
   return current_prices_temp
 
 
-# 데이터 정합성 보장 및 사이드바 평가금액 내림차순 정렬
+# 데이터 정합성 보장 및 평가금액 내림차순 정렬
 sidebar_input_cols = ["티커", "수량", "연 예상 성장률(%)", "연 회수율(%)"]
 for col in sidebar_input_cols:
   if col not in st.session_state.portfolio.columns:
