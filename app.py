@@ -143,7 +143,7 @@ col3.metric("포트폴리오 연 예상 회수율", f"{total_weighted_return:.2f
 st.divider()
 
 
-# ⭐️ 사이드바: 매수/매도 거래 입력 및 구체화된 회수율 설명 적용
+# ⭐️ 사이드바: 매수/매도 거래 입력 및 종목별 세부 설정
 with st.sidebar:
   st.header("🛒 매수 / 매도 거래 입력")
   with st.form("trade_form", clear_on_submit=True):
@@ -259,6 +259,11 @@ with st.sidebar:
   )
 
   if not edited_df.equals(current_setting_df):
+    for col in ["수량", "연 예상 성장률(%)", "연 회수율(%)"]:
+      edited_df[col] = (
+          pd.to_numeric(edited_df[col], errors="coerce").fillna(0.0).astype(float)
+      )
+
     st.session_state.portfolio = edited_df.copy()
     edited_df.to_csv(DATA_FILE, index=False)
     st.rerun()
