@@ -1,4 +1,4 @@
-import sqlite3
+import gspread
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -18,51 +18,64 @@ st.write(
     " 확인하세요."
 )
 
-DB_FILE = "portfolio.db"
+
+# 구글 시트 연결 함수 (Secrets에서 URL 불러오기)
+@st.cache_resource
+def get_gsheet_client():
+  try:
+    sheet_url = st.secrets["google_sheets"]["sheet_url"]
+    gc = gspread.service_account_from_dict(
+        dict(st.secrets["gcp_service_account"])
+    )  # 또는 public URL 활용 방식
+    return sheet_url
+  except Exception:
+    return None
 
 
-# SQLite 데이터베이스 연결 및 테이블 초기화
-def init_db():
-  conn = sqlite3.connect(DB_FILE)
-  cursor = conn.cursor()
-  cursor.execute(
-      "CREATE TABLE IF NOT EXISTS portfolio (티커 TEXT, 수량 REAL, [연"
-      " 예상 성장률(%)] REAL, [연 회수율(%)] REAL)"
-  )
-  conn.commit()
-  conn.close()
+# 간편하게 public 구글 시트를 URL로 바로 연동하는 방식 (서비스 계정 없이 공공/공개 시트 활용)
+def load_data_from_gsheet():
+  try:
+    sheet_url = st.secrets["google_sheets"]["sheet_url"]
+    # 구글 시트를 공개(편집 가능)로 설정한 경우 gspread의 공개 URL 열기 기능 활용
+    gc = gspread.no_auth()
+    sh = gc.open_by_url(sheet_url)
+    worksheet = sh.get_worksheet(0)
+    data = worksheet.get_all_records()
+    df = pd.DataFrame(data)
+
+    if df.empty:
+      df = pd.DataFrame({
+          "티커": ["AAPL", "TSLA", "MSFT"],
+          "수량": [10.0, 5.0, 8.0],
+          "연 예상 성장률(%)": [12.0, 20.0, 15.0],
+          "연 회수율(%)": [0.5, 0.0, 0.7],
+      })
+      save_data_to_gsheet(df)
+    return df
+  except Exception as e:
+    st.error(
+        f"구글 시트 연동 중 오류가 발생했습니다. secrets.toml 설정을 확인해주세요."
+        f" 상세: {e}"
+    )
+    return pd.DataFrame(
+        columns=["티커", "수량", "연 예상 성장률(%)", "연 회수율(%)"]
+    )
 
 
-init_db()
+def save_data_to_gsheet(df):
+  try:
+    sheet_url = st.secrets["google_sheets"]["sheet_url"]
+    gc = gspread.no_auth()
+    sh = gc.open_by_url(sheet_url)
+    worksheet = sh.get_worksheet(0)
 
-
-# 데이터 로드 함수
-def load_data():
-  conn = sqlite3.connect(DB_FILE)
-  df = pd.read_sql(
-      "SELECT 티커, 수량, \"연 예상 성장률(%)\", \"연 회수율(%)\" FROM"
-      " portfolio",
-      conn,
-  )
-  conn.close()
-
-  if df.empty:
-    default_df = pd.DataFrame({
-        "티커": ["AAPL", "TSLA", "MSFT"],
-        "수량": [10.0, 5.0, 8.0],
-        "연 예상 성장률(%)": [12.0, 20.0, 15.0],
-        "연 회수율(%)": [0.5, 0.0, 0.7],
-    })
-    save_data(default_df)
-    return default_df
-  return df
-
-
-# 데이터 저장 함수
-def save_data(df):
-  conn = sqlite3.connect(DB_FILE)
-  df.to_sql("portfolio", conn, if_exists="replace", index=False)
-  conn.close()
+    # 데이터 초기화 후 전체 업로드
+    worksheet.clear()
+    # 컬럼명 포함해서 데이터 쓰기
+    data_to_write = [df.columns.tolist()] + df.values.tolist()
+    worksheet.update(data_to_write)
+  except Exception as e:
+    st.error(f"구글 시트 저장 실패: {e}")
 
 
 if (
@@ -70,7 +83,7 @@ if (
     or st.session_state.portfolio is None
     or st.session_state.portfolio.empty
 ):
-  st.session_state.portfolio = load_data()
+  st.session_state.portfolio = load_data_from_gsheet()
 
 
 def get_current_prices(tickers):
@@ -269,7 +282,7 @@ with st.sidebar:
             .astype(float)
         )
 
-        save_data(current_portfolio)
+        save_data_to_gsheet(current_portfolio)
         st.session_state.portfolio = current_portfolio
         st.rerun()
 
@@ -298,7 +311,7 @@ with st.sidebar:
       )
 
     st.session_state.portfolio = edited_df.copy()
-    save_data(edited_df)
+    save_data_to_gsheet(edited_df)
     st.rerun()
 
 
