@@ -11,8 +11,9 @@ st.set_page_config(
     menu_items={"Get Help": None, "Report a bug": None, "About": None},
 )
 
-# 파일 경로 설정
-USERS_FILE = "users.csv"  # 로컬 계정 관리용 파일
+# 파일 경로 설정 (고정된 단일 파일)
+DATA_FILE = "portfolio.csv"
+USERS_FILE = "users.csv"
 
 # 세션 상태 초기화
 if "logged_in" not in st.session_state:
@@ -114,21 +115,13 @@ if not st.session_state.logged_in:
   st.stop()
 
 
-# --- [3] 로그인 이후 메인 앱 로직 (사용자별 CSV 연동 함수) ---
-
-
-def get_user_csv_filename(username):
-  safe_username = "".join(
-      c for c in username if c.isalnum() or c in ("_", "-")
-  )
-  return f"{safe_username}_portfolio.csv"
+# --- [3] 로그인 이후 메인 앱 로직 (단일 portfolio.csv 연동 함수) ---
 
 
 def load_user_portfolio(username):
   try:
-    file_name = get_user_csv_filename(username)
-    if pd.io.common.file_exists(file_name):
-      df = pd.read_csv(file_name)
+    if pd.io.common.file_exists(DATA_FILE):
+      df = pd.read_csv(DATA_FILE)
       required_cols = ["티커", "수량", "연 예상 성장률(%)", "연 회수율(%)"]
       for col in required_cols:
         if col not in df.columns:
@@ -146,8 +139,7 @@ def load_user_portfolio(username):
 
 def save_user_portfolio(username, df):
   try:
-    file_name = get_user_csv_filename(username)
-    df.to_csv(file_name, index=False)
+    df.to_csv(DATA_FILE, index=False)
   except Exception as e:
     st.error(f"데이터 저장 중 오류가 발생했습니다: {e}")
 
@@ -394,9 +386,10 @@ with st.sidebar:
       key="sidebar_editor",
   )
 
-  if not edited_df.equals(current_setting_df):
+  if st.button("💾 변경된 설정 저장하기"):
     st.session_state.portfolio = edited_df.copy()
     save_user_portfolio(st.session_state.username, edited_df)
+    st.success("포트폴리오가 'portfolio.csv'에 성공적으로 저장되었습니다!")
     st.rerun()
 
 
