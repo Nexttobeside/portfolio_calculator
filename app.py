@@ -242,10 +242,12 @@ with st.sidebar:
 
   st.divider()
 
-  st.header("⚙️ 종목별 성장률 및 회수율 설정")
-  st.write(
-      "종목별 **수량**과 **연 예상 성장률**, **회수율(배당+자사주 매입)**을 직접"
-      " 수정하거나 관리할 수 있습니다."
+st.header("⚙️ 종목별 성장률 및 회수율 설정")
+st.write(
+    "종목별 **수량**과 **연 예상 성장률**, <strong>회수율(배당+자사주 매입)</strong>을"
+    " 직접 수정하거나 관리할 수 있습니다.",
+    unsafe_allow_html=True,
+)
   )
 
   current_setting_df = st.session_state.portfolio[sidebar_input_cols].copy()
