@@ -1,9 +1,7 @@
-import base64
-import os
-from github import Github
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from supabase import create_client
 import squarify
 import streamlit as st
 import yfinance as yf
@@ -16,66 +14,73 @@ st.set_page_config(
 
 st.title("📈 주식 포트폴리오 연간 성과 계산기")
 st.write(
-    "종목 거래를 관리하고 실시간 주가 반영된 전체 포트폴리오의 종합 성과를"
-    " 확인하세요."
+    "클라우드 DB(Supabase) 연동으로 어떤 기기에서든 실시간 동기화되는"
+    " 포트폴리오를 관리하세요."
 )
 
-DATA_FILE = "portfolio.csv"
+# Supabase 클라이언트 연결 설정
+SUPABASE_URL = st.secrets.get("supabase_url", "")
+SUPABASE_KEY = st.secrets.get("supabase_key", "")
 
-# GitHub 설정 불러오기 (st.secrets 활용)
-GITHUB_TOKEN = st.secrets.get("github_token", "")
-REPO_NAME = st.secrets.get("github_repo", "")
+if not SUPABASE_URL or not SUPABASE_KEY:
+  st.error(
+      "Supabase URL 또는 Key가 설정되지 않았습니다. st.secrets를 확인해주세요."
+  )
+  st.stop()
+
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
-# GitHub에 portfolio.csv를 자동으로 업데이트(커밋 & 푸시)하는 함수
-def save_to_github(df, commit_message="Update portfolio.csv via Streamlit app"):
-  if not GITHUB_TOKEN or not REPO_NAME:
-    # 깃허브 설정이 안 되어 있는 경우 로컬 파일로 대체 저장
-    df.to_csv(DATA_FILE, index=False)
-    return False
+# DB에서 최신 포트폴리오 데이터 불러오기 함수
+def load_portfolio_from_db():
+  response = supabase.table("portfolio").select("*").execute()
+  data = response.data
+  if not data:
+    return pd.DataFrame(
+        columns=["id", "티커", "수량", "연 예상 성장률(%)", "연 회수율(%)"]
+    )
 
+  df = pd.DataFrame(data)
+  # DB 컬럼명 매핑 (영어 컬럼명 -> 한글 UI 컬럼명)
+  df = df.rename(
+      columns={
+          "ticker": "티커",
+          "shares": "수량",
+          "growth_rate": "연 예상 성장률(%)",
+          "return_rate": "연 회수율(%)",
+      }
+  )
+  return df
+
+
+# DB에 전체 포트폴리오 상태 동기화 (전체 삭제 후 재삽입 방식이 가장 안전함)
+def save_portfolio_to_db(df):
   try:
-    g = Github(GITHUB_TOKEN)
-    repo = g.get_repo(REPO_NAME)
-    csv_content = df.to_csv(index=False)
+    # 1. 기존 DB 데이터 전체 삭제
+    supabase.table("portfolio").delete().neq("id", 0).execute()
 
-    try:
-      file = repo.get_contents(DATA_FILE)
-      repo.update_file(
-          path=file.path,
-          message=commit_message,
-          content=csv_content,
-          sha=file.sha,
-      )
-    except Exception:
-      # 파일이 아예 없는 경우 새로 생성
-      repo.create_file(
-          path=DATA_FILE, message="Create portfolio.csv", content=csv_content
-      )
+    # 2. 현재 DataFrame 내용을 DB에 다시 삽입
+    for _, row in df.iterrows():
+      row_data = {
+          "ticker": str(row["티커"]).strip().upper(),
+          "shares": float(row["수량"]),
+          "growth_rate": float(row["연 예상 성장률(%)"]),
+          "return_rate": float(row["연 회수율(%)"]),
+      }
+      supabase.table("portfolio").insert(row_data).execute()
     return True
   except Exception as e:
-    st.error(f"GitHub 자동 저장 실패: {e}")
-    df.to_csv(DATA_FILE, index=False)  # 차선책으로 로컬 저장
+    st.error(f"DB 저장 실패: {e}")
     return False
 
 
-# 1. 최초 데이터 로드 (session_state 활용 및 파일/기본값 처리)
+# 세션 상태 초기화 및 DB 로드
 if (
     "portfolio" not in st.session_state
     or st.session_state.portfolio is None
     or st.session_state.portfolio.empty
 ):
-  if os.path.exists(DATA_FILE):
-    st.session_state.portfolio = pd.read_csv(DATA_FILE)
-  else:
-    default_df = pd.DataFrame({
-        "티커": ["AAPL", "TSLA", "MSFT"],
-        "수량": [10.0, 5.0, 8.0],
-        "연 예상 성장률(%)": [12.0, 20.0, 15.0],
-        "연 회수율(%)": [0.5, 0.0, 0.7],
-    })
-    default_df.to_csv(DATA_FILE, index=False)
-    st.session_state.portfolio = default_df
+  st.session_state.portfolio = load_portfolio_from_db()
 
 
 def get_current_prices(tickers):
@@ -171,7 +176,7 @@ if not active_df_calc.empty:
     )
 
 
-# 1. 화면 최상단: 전체 포트폴리오 종합 성과 요약 배치
+# 화면 최상단: 전체 포트폴리오 종합 성과 요약 배치
 st.subheader("🎯 전체 포트폴리오 종합 성과 요약")
 col1, col2, col3 = st.columns(3)
 col1.metric("총 포트폴리오 평가금액", f"${total_portfolio_value:,.2f}")
@@ -181,7 +186,7 @@ col3.metric("포트폴리오 연 예상 회수율", f"{total_weighted_return:.2f
 st.divider()
 
 
-# ⭐️ 사이드바: 매수/매도 거래 입력 및 종목 설정 관리
+# 사이드바: 매수/매도 거래 입력 및 종목 설정 관리
 with st.sidebar:
   st.header("🛒 매수 / 매도 거래 입력")
   with st.form("trade_form", clear_on_submit=True):
@@ -263,10 +268,8 @@ with st.sidebar:
           )
 
         st.session_state.portfolio = current_portfolio
-        save_to_github(
-            current_portfolio,
-            f"Trade update: {trade_type} {trade_ticker} {trade_shares} shares",
-        )
+        if save_portfolio_to_db(current_portfolio):
+          st.success("✨ 클라우드 DB에 거래 내역이 영구 저장되었습니다!")
         st.rerun()
 
   st.divider()
@@ -293,11 +296,12 @@ with st.sidebar:
       )
 
     st.session_state.portfolio = edited_df.copy()
-    save_to_github(edited_df, "Update portfolio settings via sidebar editor")
+    if save_portfolio_to_db(edited_df):
+      st.success("✨ 설정 변경 내용이 클라우드 DB에 즉시 반영되었습니다!")
     st.rerun()
 
 
-# ⭐️ <종목별 분석 및 비중 현황> 메인 영역
+# 종목별 분석 및 비중 현황 메인 영역
 if not st.session_state.portfolio.empty:
   raw_df = st.session_state.portfolio.copy()
   raw_df["수량"] = pd.to_numeric(raw_df["수량"], errors="coerce").fillna(0.0)
