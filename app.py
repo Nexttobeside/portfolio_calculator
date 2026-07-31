@@ -1,7 +1,8 @@
-import gspread
+import io
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import requests
 import squarify
 import streamlit as st
 import yfinance as yf
@@ -19,63 +20,30 @@ st.write(
 )
 
 
-# 구글 시트 연결 함수 (Secrets에서 URL 불러오기)
-@st.cache_resource
-def get_gsheet_client():
-  try:
-    sheet_url = st.secrets["google_sheets"]["sheet_url"]
-    gc = gspread.service_account_from_dict(
-        dict(st.secrets["gcp_service_account"])
-    )  # 또는 public URL 활용 방식
-    return sheet_url
-  except Exception:
-    return None
-
-
-# 간편하게 public 구글 시트를 URL로 바로 연동하는 방식 (서비스 계정 없이 공공/공개 시트 활용)
+# 구글 시트 데이터를 CSV로 불러오는 함수 (인증 불필요, 가장 안정적)
 def load_data_from_gsheet():
   try:
-    sheet_url = st.secrets["google_sheets"]["sheet_url"]
-    # 구글 시트를 공개(편집 가능)로 설정한 경우 gspread의 공개 URL 열기 기능 활용
-    gc = gspread.no_auth()
-    sh = gc.open_by_url(sheet_url)
-    worksheet = sh.get_worksheet(0)
-    data = worksheet.get_all_records()
-    df = pd.DataFrame(data)
+    csv_url = st.secrets["google_sheets"]["csv_url"]
+    response = requests.get(csv_url)
+    response.raise_for_status()
+    df = pd.read_csv(io.StringIO(response.text))
 
-    if df.empty:
+    if df.empty or "티커" not in df.columns:
       df = pd.DataFrame({
           "티커": ["AAPL", "TSLA", "MSFT"],
           "수량": [10.0, 5.0, 8.0],
           "연 예상 성장률(%)": [12.0, 20.0, 15.0],
           "연 회수율(%)": [0.5, 0.0, 0.7],
       })
-      save_data_to_gsheet(df)
     return df
   except Exception as e:
     st.error(
-        f"구글 시트 연동 중 오류가 발생했습니다. secrets.toml 설정을 확인해주세요."
-        f" 상세: {e}"
+        f"구글 시트 로드 중 오류가 발생했습니다. secrets.toml의 csv_url 설정을"
+        f" 확인해주세요. 상세: {e}"
     )
     return pd.DataFrame(
         columns=["티커", "수량", "연 예상 성장률(%)", "연 회수율(%)"]
     )
-
-
-def save_data_to_gsheet(df):
-  try:
-    sheet_url = st.secrets["google_sheets"]["sheet_url"]
-    gc = gspread.no_auth()
-    sh = gc.open_by_url(sheet_url)
-    worksheet = sh.get_worksheet(0)
-
-    # 데이터 초기화 후 전체 업로드
-    worksheet.clear()
-    # 컬럼명 포함해서 데이터 쓰기
-    data_to_write = [df.columns.tolist()] + df.values.tolist()
-    worksheet.update(data_to_write)
-  except Exception as e:
-    st.error(f"구글 시트 저장 실패: {e}")
 
 
 if (
@@ -282,8 +250,11 @@ with st.sidebar:
             .astype(float)
         )
 
-        save_data_to_gsheet(current_portfolio)
         st.session_state.portfolio = current_portfolio
+        st.info(
+            "💡 구글 시트 연동형 웹에서는 데이터 조회가 실시간 연동되며, 직접"
+            " 구글 시트 파일에서 수정을 관리하실 수 있습니다."
+        )
         st.rerun()
 
   st.divider()
@@ -291,7 +262,7 @@ with st.sidebar:
   st.header("⚙️ 종목별 성장률 및 회수율 설정")
   st.write(
       "종목별 **수량**과 **연 예상 성장률**, <strong>회수율(배당+자사주 매입)</strong>을"
-      " 직접 수정하거나 관리할 수 있습니다.",
+      " 확인합니다.",
       unsafe_allow_html=True,
   )
 
@@ -311,7 +282,6 @@ with st.sidebar:
       )
 
     st.session_state.portfolio = edited_df.copy()
-    save_data_to_gsheet(edited_df)
     st.rerun()
 
 
