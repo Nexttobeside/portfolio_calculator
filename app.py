@@ -60,7 +60,7 @@ def get_current_prices(tickers):
   return current_prices_temp
 
 
-# ⭐️ 데이터 정합성 보장 및 사이드바 <포트폴리오 설정> 평가금액 내림차순 정렬
+# 데이터 정합성 보장 및 사이드바 <포트폴리오 설정> 평가금액 내림차순 정렬
 sidebar_input_cols = ["티커", "수량", "연 예상 성장률(%)", "연 회수율(%)"]
 for col in sidebar_input_cols:
   if col not in st.session_state.portfolio.columns:
@@ -75,7 +75,6 @@ for col in ["수량", "연 예상 성장률(%)", "연 회수율(%)"]:
       .astype(float)
   )
 
-# 전체 티커 현재가 조회 후 평가금액 기준으로 내림차순 정렬 적용
 all_tickers = st.session_state.portfolio["티커"].astype(str).tolist()
 all_prices = get_current_prices(all_tickers)
 
@@ -92,7 +91,59 @@ st.session_state.portfolio = (
     .reset_index(drop=True)
 )
 
-# ⭐️ 사이드바 설정 (<포트폴리오 설정>: 평가금액 내림차순으로 정렬된 목록 표시)
+# ⭐️ 사전 계산: 종합 성과 요약에 사용할 전체 포트폴리오 가치 및 가중치 미리 산출
+raw_df_calc = st.session_state.portfolio.copy()
+raw_df_calc["수량"] = pd.to_numeric(raw_df_calc["수량"], errors="coerce").fillna(
+    0.0
+)
+raw_df_calc["연 예상 성장률(%)"] = pd.to_numeric(
+    raw_df_calc["연 예상 성장률(%)"], errors="coerce"
+).fillna(0.0)
+raw_df_calc["연 회수율(%)"] = pd.to_numeric(
+    raw_df_calc["연 회수율(%)"], errors="coerce"
+).fillna(0.0)
+
+active_df_calc = raw_df_calc[raw_df_calc["수량"] > 0].copy()
+total_portfolio_value = 0.0
+total_weighted_growth = 0.0
+total_weighted_return = 0.0
+
+if not active_df_calc.empty:
+  calc_tickers = active_df_calc["티커"].tolist()
+  calc_prices = get_current_prices(calc_tickers)
+  active_df_calc["실시간 주당 현재가"] = active_df_calc["티커"].map(calc_prices)
+  active_df_calc["현재 평가금액(총액)"] = (
+      active_df_calc["수량"] * active_df_calc["실시간 주당 현재가"]
+  )
+  total_portfolio_value = active_df_calc["현재 평가금액(총액)"].sum()
+
+  if total_portfolio_value > 0:
+    active_df_calc["가중 성장 기여도"] = (
+        active_df_calc["현재 평가금액(총액)"]
+        * active_df_calc["연 예상 성장률(%)"]
+    )
+    active_df_calc["가중 회수 기여도"] = (
+        active_df_calc["현재 평가금액(총액)"] * active_df_calc["연 회수율(%)"]
+    )
+    total_weighted_growth = (
+        active_df_calc["가중 성장 기여도"].sum() / total_portfolio_value
+    )
+    total_weighted_return = (
+        active_df_calc["가중 회수 기여도"].sum() / total_portfolio_value
+    )
+
+
+# ⭐️ 1. 화면 최상단: 전체 포트폴리오 종합 성과 요약 배치
+st.subheader("🎯 전체 포트폴리오 종합 성과 요약")
+col1, col2, col3 = st.columns(3)
+col1.metric("총 포트폴리오 평가금액", f"${total_portfolio_value:,.2f}")
+col2.metric("포트폴리오 연 예상 성장률", f"{total_weighted_growth:.2f}%")
+col3.metric("포트폴리오 연 예상 회수율", f"{total_weighted_return:.2f}%")
+
+st.divider()
+
+
+# ⭐️ 사이드바 설정 (<포트폴리오 설정> 및 <매수/매도 거래 입력> 분리 배치)
 with st.sidebar:
   st.header("⚙️ 포트폴리오 설정")
   st.write(
@@ -114,109 +165,106 @@ with st.sidebar:
     edited_df.to_csv(DATA_FILE, index=False)
     st.rerun()
 
-# ⭐️ 매수 / 매도 거래 입력
-st.subheader("🛒 매수 / 매도 거래 입력")
-with st.form("trade_form", clear_on_submit=True):
-  col_t1, col_t2, col_t3 = st.columns([1, 1, 1])
-  with col_t1:
+  st.divider()
+
+  # ⭐️ 매수 / 매도 거래 입력을 사이드바 하단으로 이동
+  st.header("🛒 매수 / 매도 거래 입력")
+  with st.form("trade_form", clear_on_submit=True):
     trade_ticker = (
         st.text_input("티커 (예: AAPL, 005930.KS)").strip().upper()
     )
-  with col_t2:
     trade_type = st.selectbox("거래 구분", ["매수", "매도"])
-  with col_t3:
     trade_shares = st.number_input(
         "수량", min_value=0, value=0, step=1, format="%d"
     )
 
-  submit_trade = st.form_submit_button("거래 반영하기")
+    submit_trade = st.form_submit_button("거래 반영하기")
 
-  if submit_trade:
-    if not trade_ticker:
-      st.error("티커를 입력해주세요.")
-    elif trade_shares <= 0:
-      st.error("수량은 0보다 커야 합니다.")
-    else:
-      current_portfolio = st.session_state.portfolio.copy()
-      current_portfolio["티커_upper"] = (
-          current_portfolio["티커"].astype(str).str.strip().str.upper()
-      )
-      match_idx = current_portfolio[
-          current_portfolio["티커_upper"] == trade_ticker
-      ].index
-
-      if not match_idx.empty:
-        idx = match_idx[0]
-        current_shares = float(
-            pd.to_numeric(current_portfolio.loc[idx, "수량"], errors="coerce")
-            or 0.0
+    if submit_trade:
+      if not trade_ticker:
+        st.error("티커를 입력해주세요.")
+      elif trade_shares <= 0:
+        st.error("수량은 0보다 커야 합니다.")
+      else:
+        current_portfolio = st.session_state.portfolio.copy()
+        current_portfolio["티커_upper"] = (
+            current_portfolio["티커"].astype(str).str.strip().str.upper()
         )
+        match_idx = current_portfolio[
+            current_portfolio["티커_upper"] == trade_ticker
+        ].index
 
-        if trade_type == "매수":
-          current_portfolio.loc[idx, "수량"] = current_shares + trade_shares
-          st.success(
-              f"[{trade_ticker}] {trade_shares}주 매수 반영 완료! (총"
-              f" {current_portfolio.loc[idx, '수량']}주)"
+        if not match_idx.empty:
+          idx = match_idx[0]
+          current_shares = float(
+              pd.to_numeric(current_portfolio.loc[idx, "수량"], errors="coerce")
+              or 0.0
           )
-        else:
-          new_shares = current_shares - trade_shares
-          current_portfolio.loc[idx, "수량"] = max(0.0, new_shares)
-          if new_shares <= 0:
-            st.warning(
-                f"[{trade_ticker}] 전량 매도되어 분석 현황에서 제외되었으나,"
-                " 설정에는 수량 0으로 유지됩니다."
+
+          if trade_type == "매수":
+            current_portfolio.loc[idx, "수량"] = current_shares + trade_shares
+            st.success(
+                f"[{trade_ticker}] {trade_shares}주 매수 반영 완료! (총"
+                f" {current_portfolio.loc[idx, '수량']}주)"
             )
           else:
-            st.success(
-                f"[{trade_ticker}] {trade_shares}주 매도 반영 완료! (잔여"
-                f" {new_shares}주)"
-            )
-      else:
-        if trade_type == "매도":
-          st.error("보유하고 있지 않은 종목은 매도할 수 없습니다.")
+            new_shares = current_shares - trade_shares
+            current_portfolio.loc[idx, "수량"] = max(0.0, new_shares)
+            if new_shares <= 0:
+              st.warning(
+                  f"[{trade_ticker}] 전량 매도되어 분석 현황에서 제외되었으나,"
+                  " 설정에는 수량 0으로 유지됩니다."
+              )
+            else:
+              st.success(
+                  f"[{trade_ticker}] {trade_shares}주 매도 반영 완료! (잔여"
+                  f" {new_shares}주)"
+              )
         else:
-          new_row = pd.DataFrame({
-              "티커": [trade_ticker],
-              "수량": [float(trade_shares)],
-              "연 예상 성장률(%)": [10.0],
-              "연 회수율(%)": [0.0],
-          })
-          current_portfolio = pd.concat(
-              [current_portfolio, new_row], ignore_index=True
-          )
-          st.success(
-              f"신규 종목 [{trade_ticker}]이(가) 설정에 추가되고 매수가"
-              " 반영되었습니다!"
-          )
+          if trade_type == "매도":
+            st.error("보유하고 있지 않은 종목은 매도할 수 없습니다.")
+          else:
+            new_row = pd.DataFrame({
+                "티커": [trade_ticker],
+                "수량": [float(trade_shares)],
+                "연 예상 성장률(%)": [10.0],
+                "연 회수율(%)": [0.0],
+            })
+            current_portfolio = pd.concat(
+                [current_portfolio, new_row], ignore_index=True
+            )
+            st.success(
+                f"신규 종목 [{trade_ticker}]이(가) 설정에 추가되고 매수가"
+                " 반영되었습니다!"
+            )
 
-      if "티커_upper" in current_portfolio.columns:
-        current_portfolio = current_portfolio.drop(columns=["티커_upper"])
+        if "티커_upper" in current_portfolio.columns:
+          current_portfolio = current_portfolio.drop(columns=["티커_upper"])
 
-      current_portfolio["수량"] = (
-          pd.to_numeric(current_portfolio["수량"], errors="coerce")
-          .fillna(0.0)
-          .astype(float)
-      )
-      current_portfolio["연 예상 성장률(%)"] = (
-          pd.to_numeric(
-              current_portfolio["연 예상 성장률(%)"], errors="coerce"
-          )
-          .fillna(0.0)
-          .astype(float)
-      )
-      current_portfolio["연 회수율(%)"] = (
-          pd.to_numeric(current_portfolio["연 회수율(%)"], errors="coerce")
-          .fillna(0.0)
-          .astype(float)
-      )
+        current_portfolio["수량"] = (
+            pd.to_numeric(current_portfolio["수량"], errors="coerce")
+            .fillna(0.0)
+            .astype(float)
+        )
+        current_portfolio["연 예상 성장률(%)"] = (
+            pd.to_numeric(
+                current_portfolio["연 예상 성장률(%)"], errors="coerce"
+            )
+            .fillna(0.0)
+            .astype(float)
+        )
+        current_portfolio["연 회수율(%)"] = (
+            pd.to_numeric(current_portfolio["연 회수율(%)"], errors="coerce")
+            .fillna(0.0)
+            .astype(float)
+        )
 
-      current_portfolio.to_csv(DATA_FILE, index=False)
-      st.session_state.portfolio = current_portfolio
-      st.rerun()
+        current_portfolio.to_csv(DATA_FILE, index=False)
+        st.session_state.portfolio = current_portfolio
+        st.rerun()
 
-st.divider()
 
-# ⭐️ <종목별 분석 및 비중 현황> 영역
+# ⭐️ <종목별 분석 및 비중 현황> 메인 영역
 if not st.session_state.portfolio.empty:
   raw_df = st.session_state.portfolio.copy()
   raw_df["수량"] = pd.to_numeric(raw_df["수량"], errors="coerce").fillna(0.0)
@@ -227,7 +275,6 @@ if not st.session_state.portfolio.empty:
       raw_df["연 회수율(%)"], errors="coerce"
   ).fillna(0.0)
 
-  # 수량이 0보다 큰 보유 종목만 필터링
   active_df = raw_df[raw_df["수량"] > 0].copy()
 
   if not active_df.empty:
@@ -239,35 +286,10 @@ if not st.session_state.portfolio.empty:
         active_df["수량"] * active_df["실시간 주당 현재가"]
     )
 
-    # 평가금액 기준 내림차순 정렬 및 1번부터 인덱스 번호 매기기
     active_df = active_df.sort_values(
         by="현재 평가금액(총액)", ascending=False
     ).reset_index(drop=True)
     active_df.index = range(1, len(active_df) + 1)
-
-    total_portfolio_value = active_df["현재 평가금액(총액)"].sum()
-
-    if total_portfolio_value > 0:
-      active_df["포트폴리오 비중(%)"] = (
-          active_df["현재 평가금액(총액)"] / total_portfolio_value
-      ) * 100
-      active_df["가중 성장 기여도"] = (
-          active_df["현재 평가금액(총액)"] * active_df["연 예상 성장률(%)"]
-      )
-      active_df["가중 회수 기여도"] = (
-          active_df["현재 평가금액(총액)"] * active_df["연 회수율(%)"]
-      )
-
-      total_weighted_growth = (
-          active_df["가중 성장 기여도"].sum() / total_portfolio_value
-      )
-      total_weighted_return = (
-          active_df["가중 회수 기여도"].sum() / total_portfolio_value
-      )
-    else:
-      active_df["포트폴리오 비중(%)"] = 0.0
-      total_weighted_growth = 0.0
-      total_weighted_return = 0.0
 
     table_df = active_df.copy()
     table_df = table_df.rename(
@@ -413,16 +435,8 @@ if not st.session_state.portfolio.empty:
       ax.set_ylim(0, 100)
       ax.axis("off")
       st.pyplot(fig)
-
-    # 종합 성과 요약
-    st.divider()
-    st.subheader("🎯 전체 포트폴리오 종합 성과 요약")
-    col1, col2, col3 = st.columns(3)
-    col1.metric("총 포트폴리오 평가금액", f"${total_portfolio_value:,.2f}")
-    col2.metric("포트폴리오 연 예상 성장률", f"{total_weighted_growth:.2f}%")
-    col3.metric("포트폴리오 연 예상 회수율", f"{total_weighted_return:.2f}%")
   else:
     st.info(
-        "현재 보유 중인 종목이 없습니다. (사이드바 설정에는 미보유 종목의"
-        " 성장률/회수율이 안전하게 보관되어 있습니다.)"
+        "현재 보유 중인 종목이 없습니다. (사이드바 설정 및 매수 거래 입력을 통해"
+        " 종목을 추가해 주세요.)"
     )
