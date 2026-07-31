@@ -1,8 +1,7 @@
-import io
+import os
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import requests
 import squarify
 import streamlit as st
 import yfinance as yf
@@ -19,39 +18,26 @@ st.write(
     " 확인하세요."
 )
 
+DATA_FILE = "portfolio.csv"
 
-# 구글 시트 데이터를 CSV로 불러오는 함수 (인증 불필요, 가장 안정적)
-def load_data_from_gsheet():
-  try:
-    csv_url = st.secrets["google_sheets"]["csv_url"]
-    response = requests.get(csv_url)
-    response.raise_for_status()
-    df = pd.read_csv(io.StringIO(response.text))
+# 1. 파일이 없을 때만 기본값으로 생성하고, 이미 존재하면 기존 사용자 설정을 그대로 로드
+if not os.path.exists(DATA_FILE):
+  default_df = pd.DataFrame({
+      "티커": ["AAPL", "TSLA", "MSFT"],
+      "수량": [10.0, 5.0, 8.0],
+      "연 예상 성장률(%)": [12.0, 20.0, 15.0],
+      "연 회수율(%)": [0.5, 0.0, 0.7],
+  })
+  default_df.to_csv(DATA_FILE, index=False)
 
-    if df.empty or "티커" not in df.columns:
-      df = pd.DataFrame({
-          "티커": ["AAPL", "TSLA", "MSFT"],
-          "수량": [10.0, 5.0, 8.0],
-          "연 예상 성장률(%)": [12.0, 20.0, 15.0],
-          "연 회수율(%)": [0.5, 0.0, 0.7],
-      })
-    return df
-  except Exception as e:
-    st.error(
-        f"구글 시트 로드 중 오류가 발생했습니다. secrets.toml의 csv_url 설정을"
-        f" 확인해주세요. 상세: {e}"
-    )
-    return pd.DataFrame(
-        columns=["티커", "수량", "연 예상 성장률(%)", "연 회수율(%)"]
-    )
-
+saved_df = pd.read_csv(DATA_FILE)
 
 if (
     "portfolio" not in st.session_state
     or st.session_state.portfolio is None
     or st.session_state.portfolio.empty
 ):
-  st.session_state.portfolio = load_data_from_gsheet()
+  st.session_state.portfolio = saved_df
 
 
 def get_current_prices(tickers):
@@ -74,7 +60,7 @@ def get_current_prices(tickers):
   return current_prices_temp
 
 
-# 데이터 정합성 보장 및 평가금액 내림차순 정렬
+# 데이터 정합성 보장 및 사이드바 평가금액 내림차순 정렬
 sidebar_input_cols = ["티커", "수량", "연 예상 성장률(%)", "연 회수율(%)"]
 for col in sidebar_input_cols:
   if col not in st.session_state.portfolio.columns:
@@ -157,7 +143,7 @@ col3.metric("포트폴리오 연 예상 회수율", f"{total_weighted_return:.2f
 st.divider()
 
 
-# ⭐️ 사이드바: 매수/매도 거래 입력 및 종목별 세부 설정
+# ⭐️ 사이드바: 매수/매도 거래 입력 및 구체화된 회수율 설명 적용
 with st.sidebar:
   st.header("🛒 매수 / 매도 거래 입력")
   with st.form("trade_form", clear_on_submit=True):
@@ -250,20 +236,16 @@ with st.sidebar:
             .astype(float)
         )
 
+        current_portfolio.to_csv(DATA_FILE, index=False)
         st.session_state.portfolio = current_portfolio
-        st.info(
-            "💡 구글 시트 연동형 웹에서는 데이터 조회가 실시간 연동되며, 직접"
-            " 구글 시트 파일에서 수정을 관리하실 수 있습니다."
-        )
         st.rerun()
 
   st.divider()
 
   st.header("⚙️ 종목별 성장률 및 회수율 설정")
   st.write(
-      "종목별 **수량**과 **연 예상 성장률**, <strong>회수율(배당+자사주 매입)</strong>을"
-      " 확인합니다.",
-      unsafe_allow_html=True,
+      "종목별 **연 예상 성장률**과 **회수율(배당+자사주 매입 등)**을 직접"
+      " 수정하거나 관리할 수 있습니다."
   )
 
   current_setting_df = st.session_state.portfolio[sidebar_input_cols].copy()
@@ -276,12 +258,8 @@ with st.sidebar:
   )
 
   if not edited_df.equals(current_setting_df):
-    for col in ["수량", "연 예상 성장률(%)", "연 회수율(%)"]:
-      edited_df[col] = (
-          pd.to_numeric(edited_df[col], errors="coerce").fillna(0.0).astype(float)
-      )
-
     st.session_state.portfolio = edited_df.copy()
+    edited_df.to_csv(DATA_FILE, index=False)
     st.rerun()
 
 
