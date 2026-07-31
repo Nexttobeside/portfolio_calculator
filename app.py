@@ -526,7 +526,7 @@ with tab2:
   st.divider()
 
   st.subheader(
-      "📊 설정된 전체 종목별 미래 회수율 비교 (현재 / 3년후 / 5년후 / 10년후)"
+      "📊 설정된 전체 종목별 미래 회수율 비교 (현재 / 1·2·3·5·7·10년 후)"
   )
   st.write(
       "사이드바 설정에 등록된 **모든 종목**(수량 무관)들의 **시간 경과에 따른"
@@ -535,7 +535,6 @@ with tab2:
 
   if not st.session_state.portfolio.empty:
     port_sim_df = st.session_state.portfolio.copy()
-    # 티커가 존재하고 비어있지 않은 항목들 대상
     port_sim_df["티커"] = port_sim_df["티커"].astype(str).str.strip()
     valid_sim_df = port_sim_df[
         (port_sim_df["티커"] != "") & (port_sim_df["티커"].notna())
@@ -548,19 +547,20 @@ with tab2:
         init_r = float(row["연 회수율(%)"])
         g_rate = float(row["연 예상 성장률(%)"]) / 100.0
 
-        r_now = init_r
-        r_3y = init_r * ((1 + g_rate) ** 2 if 3 > 1 else 1.0)
-        r_5y = init_r * ((1 + g_rate) ** 4 if 5 > 1 else 1.0)
-        r_10y = init_r * ((1 + g_rate) ** 9 if 10 > 1 else 1.0)
+        # 복리 계산 함수 (1년차는 현재회수율 그대로, n년차는 (1+g)^(n-1) 적용)
+        def calc_future_r(r, g, years):
+          return r * ((1 + g) ** (years - 1) if years > 1 else 1.0)
 
         comparison_rows.append({
             "티커": ticker,
-            "초기 회수율(%)": init_r,
             "연 성장률(%)": float(row["연 예상 성장률(%)"]),
-            "현재 회수율(%)": r_now,
-            "3년 후 회수율(%)": r_3y,
-            "5년 후 회수율(%)": r_5y,
-            "10년 후 회수율(%)": r_10y,
+            "현재 회수율(%)": init_r,
+            "1년 후 회수율(%)": calc_future_r(init_r, g_rate, 1),
+            "2년 후 회수율(%)": calc_future_r(init_r, g_rate, 2),
+            "3년 후 회수율(%)": calc_future_r(init_r, g_rate, 3),
+            "5년 후 회수율(%)": calc_future_r(init_r, g_rate, 5),
+            "7년 후 회수율(%)": calc_future_r(init_r, g_rate, 7),
+            "10년 후 회수율(%)": calc_future_r(init_r, g_rate, 10),
         })
 
       comp_result_df = pd.DataFrame(comparison_rows)
@@ -568,11 +568,13 @@ with tab2:
 
       st.dataframe(
           comp_result_df.style.format({
-              "초기 회수율(%)": "{:.2f}%",
               "연 성장률(%)": "{:.2f}%",
               "현재 회수율(%)": "{:.2f}%",
+              "1년 후 회수율(%)": "{:.2f}%",
+              "2년 후 회수율(%)": "{:.2f}%",
               "3년 후 회수율(%)": "{:.2f}%",
               "5년 후 회수율(%)": "{:.2f}%",
+              "7년 후 회수율(%)": "{:.2f}%",
               "10년 후 회수율(%)": "{:.2f}%",
           }),
           use_container_width=True,
