@@ -7,7 +7,9 @@ import streamlit as st
 import yfinance as yf
 
 st.set_page_config(
-    page_title="포트폴리오 성장률 & 회수율 계산기", layout="wide"
+    page_title="포트폴리오 성장률 & 회수율 계산기",
+    layout="wide",
+    menu_items={"Get Help": None, "Report a bug": None, "About": None},
 )
 
 st.title("📈 주식 포트폴리오 연간 성과 계산기")
@@ -54,7 +56,7 @@ def get_current_prices(tickers):
   return current_prices_temp
 
 
-# ⭐️ 사이드바 설정 (<포트폴리오 설정> 전용 공간: 보유 수량 여부와 관계없이 설정된 모든 종목 관리)
+# ⭐️ 사이드바 설정 (<포트폴리오 설정> 전용 공간)
 with st.sidebar:
   st.header("⚙️ 포트폴리오 설정")
   st.write(
@@ -62,7 +64,6 @@ with st.sidebar:
       " 관리할 수 있습니다."
   )
 
-  # 세션에 있는 전체 설정 데이터를 데이터 에디터에 연결
   sidebar_input_cols = ["티커", "수량", "연 예상 성장률(%)", "연 회수율(%)"]
   current_setting_df = st.session_state.portfolio[sidebar_input_cols]
 
@@ -102,7 +103,6 @@ with st.form("trade_form", clear_on_submit=True):
       st.error("수량은 0보다 커야 합니다.")
     else:
       current_portfolio = st.session_state.portfolio.copy()
-      # 티커 대소문자 통일을 위해 처리
       current_portfolio["티커_upper"] = (
           current_portfolio["티커"].astype(str).str.strip().str.upper()
       )
@@ -122,7 +122,6 @@ with st.form("trade_form", clear_on_submit=True):
           )
         else:
           new_shares = current_shares - trade_shares
-          # 전량 매도하더라도 설정 공간에는 남겨두고 수량만 0으로 처리
           current_portfolio.loc[idx, "수량"] = max(0.0, new_shares)
           if new_shares <= 0:
             st.warning(
@@ -138,7 +137,6 @@ with st.form("trade_form", clear_on_submit=True):
         if trade_type == "매도":
           st.error("보유하고 있지 않은 종목은 매도할 수 없습니다.")
         else:
-          # 설정에 없는 신규 종목 매수 시 설정(포트폴리오)에 새로 추가
           new_row = pd.DataFrame({
               "티커": [trade_ticker],
               "수량": [float(trade_shares)],
@@ -163,7 +161,6 @@ with st.form("trade_form", clear_on_submit=True):
 st.divider()
 
 if not edited_df.empty:
-  # 전체 설정 데이터 중 실제 수량이 0보다 큰 종목만 필터링하여 분석 및 현황에 반영
   raw_df = st.session_state.portfolio.copy()
   raw_df["수량"] = pd.to_numeric(raw_df["수량"], errors="coerce").fillna(0.0)
   raw_df["연 예상 성장률(%)"] = pd.to_numeric(
@@ -185,9 +182,13 @@ if not edited_df.empty:
         active_df["수량"] * active_df["실시간 주당 현재가"]
     )
 
+    # 평가금액 기준으로 내림차순 정렬
     active_df = active_df.sort_values(
         by="현재 평가금액(총액)", ascending=False
     ).reset_index(drop=True)
+
+    # ⭐️ 인덱스를 0부터가 아니라 1부터 시작하도록 변경 (종목 수 파악 용이)
+    active_df.index = range(1, len(active_df) + 1)
 
     total_portfolio_value = active_df["현재 평가금액(총액)"].sum()
 
@@ -213,7 +214,6 @@ if not edited_df.empty:
       total_weighted_growth = 0.0
       total_weighted_return = 0.0
 
-    # 컬럼명 변경 복사본
     table_df = active_df.copy()
     table_df = table_df.rename(
         columns={
