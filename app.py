@@ -143,7 +143,7 @@ col3.metric("포트폴리오 연 예상 회수율", f"{total_weighted_return:.2f
 st.divider()
 
 
-# ⭐️ 사이드바: 매수/매도 거래 입력 및 직관적으로 변경된 종목별 설정 배치
+# ⭐️ 사이드바: 매수/매도 거래 입력 및 구체화된 회수율 설명 적용
 with st.sidebar:
   st.header("🛒 매수 / 매도 거래 입력")
   with st.form("trade_form", clear_on_submit=True):
@@ -244,8 +244,8 @@ with st.sidebar:
 
   st.header("⚙️ 종목별 성장률 및 회수율 설정")
   st.write(
-      "종목별 **연 예상 성장률**과 **회수율(배당 등)**을 직접 수정하거나"
-      " 관리할 수 있습니다."
+      "종목별 **연 예상 성장률**과 **회수율(배당+자사주 매입 등)**을 직접"
+      " 수정하거나 관리할 수 있습니다."
   )
 
   current_setting_df = st.session_state.portfolio[sidebar_input_cols].copy()
