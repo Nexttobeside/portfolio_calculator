@@ -1,4 +1,3 @@
-import os
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -18,26 +17,68 @@ st.write(
     " 확인하세요."
 )
 
-DATA_FILE = "portfolio.csv"
+# Streamlit 내장 SQL 연결 (클라우드 DB 활용)
+conn = st.connection("sql", type="sql")
 
-# 1. 파일이 없을 때만 기본값으로 생성하고, 이미 존재하면 기존 사용자 설정을 그대로 로드
-if not os.path.exists(DATA_FILE):
-  default_df = pd.DataFrame({
-      "티커": ["AAPL", "TSLA", "MSFT"],
-      "수량": [10.0, 5.0, 8.0],
-      "연 예상 성장률(%)": [12.0, 20.0, 15.0],
-      "연 회수율(%)": [0.5, 0.0, 0.7],
-  })
-  default_df.to_csv(DATA_FILE, index=False)
+# 데이터베이스 테이블 초기화 (최초 실행 시 기본값 생성)
+with conn.session as s:
+  s.execute(
+      "CREATE TABLE IF NOT EXISTS portfolio (티커 TEXT, 수량 REAL, [연"
+      " 예상 성장률(%)] REAL, [연 회수율(%)] REAL)"
+  )
+  s.commit()
 
-saved_df = pd.read_csv(DATA_FILE)
+# 데이터 로드 함수
+def load_data():
+  df = conn.query("SELECT * FROM portfolio", ttl=0)
+  if df.empty:
+    default_df = pd.DataFrame({
+        "티커": ["AAPL", "TSLA", "MSFT"],
+        "수량": [10.0, 5.0, 8.0],
+        "연 예상 성장률(%)": [12.0, 20.0, 15.0],
+        "연 회수율(%)": [0.5, 0.0, 0.7],
+    })
+    # DB에 기본값 저장
+    with conn.session as s:
+      s.execute("DELETE FROM portfolio")
+      for _, row in default_df.iterrows():
+        s.execute(
+            "INSERT INTO portfolio VALUES (:ticker, :shares, :growth, :return)",
+            {
+                "ticker": row["티커"],
+                "shares": row["수량"],
+                "growth": row["연 예상 성장률(%)"],
+                "return": row["연 회수율(%)"],
+            },
+        )
+      s.commit()
+    df = default_df
+  return df
+
+
+# 데이터 저장 함수
+def save_data(df):
+  with conn.session as s:
+    s.execute("DELETE FROM portfolio")
+    for _, row in df.iterrows():
+      s.execute(
+          "INSERT INTO portfolio VALUES (:ticker, :shares, :growth, :return)",
+          {
+              "ticker": row["티커"],
+              "shares": row["수량"],
+              "growth": row["연 예상 성장률(%)"],
+              "return": row["연 회수율(%)"],
+          },
+      )
+    s.commit()
+
 
 if (
     "portfolio" not in st.session_state
     or st.session_state.portfolio is None
     or st.session_state.portfolio.empty
 ):
-  st.session_state.portfolio = saved_df
+  st.session_state.portfolio = load_data()
 
 
 def get_current_prices(tickers):
@@ -236,7 +277,7 @@ with st.sidebar:
             .astype(float)
         )
 
-        current_portfolio.to_csv(DATA_FILE, index=False)
+        save_data(current_portfolio)
         st.session_state.portfolio = current_portfolio
         st.rerun()
 
@@ -265,7 +306,7 @@ with st.sidebar:
       )
 
     st.session_state.portfolio = edited_df.copy()
-    edited_df.to_csv(DATA_FILE, index=False)
+    save_data(edited_df)
     st.rerun()
 
 
