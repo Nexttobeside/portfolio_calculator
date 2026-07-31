@@ -32,7 +32,12 @@ if not os.path.exists(DATA_FILE):
 
 saved_df = pd.read_csv(DATA_FILE)
 
-if "portfolio" not in st.session_state:
+# 세션 상태에 포트폴리오 설정 데이터가 없거나 비어있으면 파일에서 불러와 초기화
+if (
+    "portfolio" not in st.session_state
+    or st.session_state.portfolio is None
+    or st.session_state.portfolio.empty
+):
   st.session_state.portfolio = saved_df
 
 
@@ -56,7 +61,7 @@ def get_current_prices(tickers):
   return current_prices_temp
 
 
-# ⭐️ 사이드바 설정 (<포트폴리오 설정> 전용 공간)
+# ⭐️ 사이드바 설정 (<포트폴리오 설정> 전용 공간: 보유 수량 0인 미보유 종목도 절대 사라지지 않고 유지됨)
 with st.sidebar:
   st.header("⚙️ 포트폴리오 설정")
   st.write(
@@ -65,7 +70,17 @@ with st.sidebar:
   )
 
   sidebar_input_cols = ["티커", "수량", "연 예상 성장률(%)", "연 회수율(%)"]
-  current_setting_df = st.session_state.portfolio[sidebar_input_cols]
+
+  # 세션 데이터 정합성 보장
+  for col in sidebar_input_cols:
+    if col not in st.session_state.portfolio.columns:
+      st.session_state.portfolio[col] = (
+          0.0
+          if col in ["수량", "연 예상 성장률(%)", "연 회수율(%)"]
+          else ""
+      )
+
+  current_setting_df = st.session_state.portfolio[sidebar_input_cols].copy()
 
   edited_df = st.data_editor(
       current_setting_df,
@@ -74,9 +89,10 @@ with st.sidebar:
       key="sidebar_editor",
   )
 
+  # 사용자가 사이드바 설정을 변경했을 때 즉시 세션 및 파일 동기화
   if not edited_df.equals(current_setting_df):
+    st.session_state.portfolio = edited_df.copy()
     edited_df.to_csv(DATA_FILE, index=False)
-    st.session_state.portfolio = edited_df
     st.rerun()
 
 # ⭐️ 매수 / 매도 거래 입력
@@ -112,7 +128,10 @@ with st.form("trade_form", clear_on_submit=True):
 
       if not match_idx.empty:
         idx = match_idx[0]
-        current_shares = float(current_portfolio.loc[idx, "수량"])
+        current_shares = float(
+            pd.to_numeric(current_portfolio.loc[idx, "수량"], errors="coerce")
+            or 0.0
+        )
 
         if trade_type == "매수":
           current_portfolio.loc[idx, "수량"] = current_shares + trade_shares
@@ -125,8 +144,8 @@ with st.form("trade_form", clear_on_submit=True):
           current_portfolio.loc[idx, "수량"] = max(0.0, new_shares)
           if new_shares <= 0:
             st.warning(
-                f"[{trade_ticker}] 전량 매도되어 보유 목록에서 제외되었으나,"
-                " 설정에는 유지됩니다."
+                f"[{trade_ticker}] 전량 매도되어 분석 현황에서 제외되었으나,"
+                " 설정에는 수량 0으로 유지됩니다."
             )
           else:
             st.success(
@@ -154,13 +173,33 @@ with st.form("trade_form", clear_on_submit=True):
       if "티커_upper" in current_portfolio.columns:
         current_portfolio = current_portfolio.drop(columns=["티커_upper"])
 
+      # NaN 값 방지 처리
+      current_portfolio["수량"] = (
+          pd.to_numeric(current_portfolio["수량"], errors="coerce")
+          .fillna(0.0)
+          .astype(float)
+      )
+      current_portfolio["연 예상 성장률(%)"] = (
+          pd.to_numeric(
+              current_portfolio["연 예상 성장률(%)"], errors="coerce"
+          )
+          .fillna(0.0)
+          .astype(float)
+      )
+      current_portfolio["연 회수율(%)"] = (
+          pd.to_numeric(current_portfolio["연 회수율(%)"], errors="coerce")
+          .fillna(0.0)
+          .astype(float)
+      )
+
       current_portfolio.to_csv(DATA_FILE, index=False)
       st.session_state.portfolio = current_portfolio
       st.rerun()
 
 st.divider()
 
-if not edited_df.empty:
+# ⭐️ <포트폴리오 설정>과 완벽히 분리된 <종목별 분석 및 비중 현황> 계산 영역
+if not st.session_state.portfolio.empty:
   raw_df = st.session_state.portfolio.copy()
   raw_df["수량"] = pd.to_numeric(raw_df["수량"], errors="coerce").fillna(0.0)
   raw_df["연 예상 성장률(%)"] = pd.to_numeric(
@@ -170,7 +209,7 @@ if not edited_df.empty:
       raw_df["연 회수율(%)"], errors="coerce"
   ).fillna(0.0)
 
-  # ⭐️ <종목별 분석 및 비중 현황>: 수량이 0보다 큰 보유 종목만 필터링
+  # 오직 수량이 0보다 큰(보유 중인) 종목들만 분석 현황에 반영
   active_df = raw_df[raw_df["수량"] > 0].copy()
 
   if not active_df.empty:
@@ -187,7 +226,7 @@ if not edited_df.empty:
         by="현재 평가금액(총액)", ascending=False
     ).reset_index(drop=True)
 
-    # ⭐️ 인덱스를 0부터가 아니라 1부터 시작하도록 변경 (종목 수 파악 용이)
+    # 번호 매기기를 1부터 시작하도록 설정
     active_df.index = range(1, len(active_df) + 1)
 
     total_portfolio_value = active_df["현재 평가금액(총액)"].sum()
@@ -368,6 +407,6 @@ if not edited_df.empty:
     col3.metric("포트폴리오 연 예상 회수율", f"{total_weighted_return:.2f}%")
   else:
     st.info(
-        "현재 보유 중인 종목이 없습니다. 사이드바 설정이나 매수 거래 입력을"
-        " 통해 종목과 수량을 추가해 주세요."
+        "현재 보유 중인 종목이 없습니다. (사이드바 설정에는 미보유 종목의"
+        " 성장률/회수율이 안전하게 보관되어 있습니다.)"
     )
