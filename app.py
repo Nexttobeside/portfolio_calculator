@@ -512,9 +512,7 @@ with tab2:
 
   if submit_sim:
     future_return_val = input_init_return * (
-        (1 + input_growth_rate / 100.0) ** (input_years - 1)
-        if input_years > 1
-        else 1.0
+        (1 + input_growth_rate / 100.0) ** input_years
     )
     st.success(
         f"📌 **시뮬레이션 결과**: 초기 회수율 **{input_init_return:.2f}%**인"
@@ -530,8 +528,7 @@ with tab2:
   )
   st.write(
       "사이드바 설정에 등록된 **모든 종목**(수량 무관)들의 **시간 경과에 따른"
-      " 회수율 성장 추이**를 비교합니다. 원하는 기준을 선택하면 **높은 순서(내림차순)**로"
-      " 정렬됩니다."
+      " 회수율 성장 추이**를 비교합니다."
   )
 
   if not st.session_state.portfolio.empty:
@@ -548,8 +545,9 @@ with tab2:
         init_r = float(row["연 회수율(%)"])
         g_rate = float(row["연 예상 성장률(%)"]) / 100.0
 
+        # 복리 계산 함수 수정: n년 후는 현재 회수율에 (1 + g)^n을 곱함
         def calc_future_r(r, g, years):
-          return r * ((1 + g) ** (years - 1) if years > 1 else 1.0)
+          return r * ((1 + g) ** years)
 
         comparison_rows.append({
             "티커": ticker,
@@ -564,28 +562,6 @@ with tab2:
         })
 
       comp_result_df = pd.DataFrame(comparison_rows)
-
-      # 정렬 기준 선택 UI 추가 (기본값: 현재 회수율 기준 내림차순)
-      sort_options = [
-          "현재 회수율(%)",
-          "1년 후 회수율(%)",
-          "2년 후 회수율(%)",
-          "3년 후 회수율(%)",
-          "5년 후 회수율(%)",
-          "7년 후 회수율(%)",
-          "10년 후 회수율(%)",
-          "연 성장률(%)",
-          "티커",
-      ]
-      selected_sort_col = st.selectbox(
-          "🔍 정렬 기준 (높은 순서)", sort_options, index=0
-      )
-
-      # 선택한 기준으로 내림차순(숫자) 또는 가나다순(문자) 정렬 적용
-      is_ascending = False if selected_sort_col != "티커" else True
-      comp_result_df = comp_result_df.sort_values(
-          by=selected_sort_col, ascending=is_ascending
-      ).reset_index(drop=True)
       comp_result_df.index = range(1, len(comp_result_df) + 1)
 
       st.dataframe(
