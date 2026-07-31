@@ -55,7 +55,7 @@ def save_to_github(df, commit_message="Update portfolio.csv via Streamlit app"):
     return True
   except Exception as e:
     st.error(f"GitHub 자동 저장 실패: {e}")
-    df.to_csv(DATA_FILE, index=False)  차선책으로 로컬 저장
+    df.to_csv(DATA_FILE, index=False)  # 차선책으로 로컬 저장
     return False
 
 
