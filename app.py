@@ -3,7 +3,6 @@ import numpy as np
 import pandas as pd
 import squarify
 import streamlit as st
-from supabase import Client, create_client
 import yfinance as yf
 
 st.set_page_config(
@@ -12,17 +11,9 @@ st.set_page_config(
     menu_items={"Get Help": None, "Report a bug": None, "About": None},
 )
 
-# --- [1] Supabase 클라이언트 연결 설정 ---
-try:
-  SUPABASE_URL = st.secrets["SUPABASE_URL"]
-  SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
-  supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-except Exception as e:
-  st.error(
-      "Supabase 연결 설정(Secrets)을 찾을 수 없습니다. secrets.toml 또는"
-      " Streamlit Cloud Secrets 설정을 확인해주세요."
-  )
-  st.stop()
+# 파일 경로 설정
+DATA_FILE = "portfolio.csv"
+USERS_FILE = "users.csv"  # 로컬 계정 관리용 파일 (선택사항이지만 깔끔하게 분리)
 
 # 세션 상태 초기화
 if "logged_in" not in st.session_state:
@@ -31,9 +22,32 @@ if "username" not in st.session_state:
   st.session_state.username = ""
 
 
+# --- [1] 로컬 회원가입/로그인용 헬퍼 함수 ---
+def load_local_users():
+  try:
+    if pd.io.common.file_exists(USERS_FILE):
+      return pd.read_csv(USERS_FILE)
+    else:
+      # 기본 테스트 계정이 없다면 빈 데이터프레임 생성
+      df = pd.DataFrame(columns=["username", "password"])
+      df.to_csv(USERS_FILE, index=False)
+      return df
+  except Exception:
+    return pd.DataFrame(columns=["username", "password"])
+
+
+def save_local_user(username, password):
+  df = load_local_users()
+  new_row = pd.DataFrame(
+      [{"username": username, "password": str(password).strip()}]
+  )
+  df = pd.concat([df, new_row], ignore_index=True)
+  df.to_csv(USERS_FILE, index=False)
+
+
 # --- [2] 로그인 및 회원가입 화면 ---
 if not st.session_state.logged_in:
-  st.title("🔐 포트폴리오 계산기 로그인")
+  st.title("🔐 포트폴리오 계산기 로그인 (로컬 모드)")
   st.write(
       "지인 전용 공간입니다. 로그인을 하시거나 새 계정을 만들어 시작하세요."
   )
@@ -53,26 +67,20 @@ if not st.session_state.logged_in:
         if not login_id or not login_pw:
           st.error("아이디와 비밀번호를 모두 입력해주세요.")
         else:
-          try:
-            res = (
-                supabase.table("users")
-                .select("password")
-                .eq("username", login_id)
-                .execute()
-            )
-            if res.data:
-              stored_pw = str(res.data[0]["password"]).strip()
-              if stored_pw == login_pw:
-                st.session_state.logged_in = True
-                st.session_state.username = login_id
-                st.success(f"{login_id}님 환영합니다!")
-                st.rerun()
-              else:
-                st.error("비밀번호가 일치하지 않습니다.")
+          users_df = load_local_users()
+          matched = users_df[users_df["username"].astype(str).str.strip() == login_id]
+          
+          if not matched.empty:
+            stored_pw = str(matched.iloc[0]["password"]).strip()
+            if stored_pw == login_pw:
+              st.session_state.logged_in = True
+              st.session_state.username = login_id
+              st.success(f"{login_id}님 환영합니다!")
+              st.rerun()
             else:
-              st.error("존재하지 않는 아이디입니다.")
-          except Exception as err:
-            st.error(f"로그인 중 오류 발생: {err}")
+              st.error("비밀번호가 일치하지 않습니다.")
+          else:
+            st.error("존재하지 않는 아이디입니다.")
 
   # 2) 회원가입 탭
   with tab_register:
@@ -92,58 +100,34 @@ if not st.session_state.logged_in:
         elif reg_pw != reg_pw_confirm:
           st.error("비밀번호가 서로 일치하지 않습니다.")
         else:
-          try:
-            # 아이디 중복 확인
-            check_res = (
-                supabase.table("users")
-                .select("username")
-                .eq("username", reg_id)
-                .execute()
+          users_df = load_local_users()
+          if not users_df[users_df["username"].astype(str).str.strip() == reg_id].empty:
+            st.error("이미 존재하는 아이디입니다. 다른 아이디를 사용해 주세요.")
+          else:
+            save_local_user(reg_id, reg_pw)
+            st.success(
+                "🎉 회원가입이 완료되었습니다! '로그인' 탭에서 로그인해 주세요."
             )
-            if check_res.data:
-              st.error(
-                  "이미 존재하는 아이디입니다. 다른 아이디를 사용해 주세요."
-              )
-            else:
-              # Supabase users 테이블에 계정 추가
-              supabase.table("users").insert(
-                  {"username": reg_id, "password": reg_pw}
-              ).execute()
-              st.success(
-                  "🎉 회원가입이 완료되었습니다! '로그인' 탭에서 로그인해 주세요."
-              )
-          except Exception as err:
-            st.error(f"회원가입 중 오류 발생: {err}")
 
   st.stop()
 
 
-# --- [3] 로그인 이후 메인 앱 로직 (데이터베이스 연동 함수) ---
+# --- [3] 로그인 이후 메인 앱 로직 (로컬 CSV 연동) ---
 
 
 def load_user_portfolio(username):
   try:
-    res = (
-        supabase.table("portfolios")
-        .select("ticker, shares, growth_rate, return_rate")
-        .eq("username", username)
-        .execute()
-    )
-    data = res.data
-    if not data:
+    if pd.io.common.file_exists(DATA_FILE):
+      df = pd.read_csv(DATA_FILE)
+      required_cols = ["티커", "수량", "연 예상 성장률(%)", "연 회수율(%)"]
+      for col in required_cols:
+        if col not in df.columns:
+          df[col] = 0.0 if col != "티커" else ""
+      return df
+    else:
       return pd.DataFrame(
           columns=["티커", "수량", "연 예상 성장률(%)", "연 회수율(%)"]
       )
-    df = pd.DataFrame(data)
-    df = df.rename(
-        columns={
-            "ticker": "티커",
-            "shares": "수량",
-            "growth_rate": "연 예상 성장률(%)",
-            "return_rate": "연 회수율(%)",
-        }
-    )
-    return df
   except Exception:
     return pd.DataFrame(
         columns=["티커", "수량", "연 예상 성장률(%)", "연 회수율(%)"]
@@ -152,22 +136,7 @@ def load_user_portfolio(username):
 
 def save_user_portfolio(username, df):
   try:
-    # 기존 해당 유저 데이터 전부 삭제 후 최신 상태로 덮어쓰기 (가장 안정적)
-    supabase.table("portfolios").delete().eq("username", username).execute()
-
-    active_rows = df[df["수량"] > 0]
-    if not active_rows.empty:
-      records = []
-      for _, row in active_rows.iterrows():
-        records.append({
-            "username": username,
-            "ticker": str(row["티커"]).strip().upper(),
-            "shares": float(row["수량"]),
-            "growth_rate": float(row["연 예상 성장률(%)"]),
-            "return_rate": float(row["연 회수율(%)"]),
-        })
-      if records:
-        supabase.table("portfolios").insert(records).execute()
+    df.to_csv(DATA_FILE, index=False)
   except Exception as e:
     st.error(f"데이터 저장 중 오류가 발생했습니다: {e}")
 
