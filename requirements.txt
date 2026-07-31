@@ -4,4 +4,3 @@ numpy
 matplotlib
 squarify
 yfinance
-supabase
