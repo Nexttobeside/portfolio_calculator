@@ -1,9 +1,9 @@
-import os
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import squarify
 import streamlit as st
+from supabase import Client, create_client
 import yfinance as yf
 
 st.set_page_config(
@@ -12,16 +12,17 @@ st.set_page_config(
     menu_items={"Get Help": None, "Report a bug": None, "About": None},
 )
 
-USERS_FILE = "users.csv"
-
-# --- [1] 사용자 계정 파일(users.csv) 초기화 ---
-if not os.path.exists(USERS_FILE):
-  # 최초 실행 시 기본 관리자 계정 생성 (원하시면 지우셔도 됩니다)
-  # 비밀번호는 보안을 위해 간단한 텍스트로 저장됩니다.
-  default_users = pd.DataFrame(
-      {"username": ["admin"], "password": ["1234"]}
+# --- [1] Supabase 클라이언트 연결 설정 ---
+try:
+  SUPABASE_URL = st.secrets["SUPABASE_URL"]
+  SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+  supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+except Exception as e:
+  st.error(
+      "Supabase 연결 설정(Secrets)을 찾을 수 없습니다. secrets.toml 또는"
+      " Streamlit Cloud Secrets 설정을 확인해주세요."
   )
-  default_users.to_csv(USERS_FILE, index=False)
+  st.stop()
 
 # 세션 상태 초기화
 if "logged_in" not in st.session_state:
@@ -52,21 +53,26 @@ if not st.session_state.logged_in:
         if not login_id or not login_pw:
           st.error("아이디와 비밀번호를 모두 입력해주세요.")
         else:
-          users_df = pd.read_csv(USERS_FILE)
-          users_df["username"] = users_df["username"].astype(str).str.strip()
-
-          match = users_df[users_df["username"] == login_id]
-          if not match.empty:
-            stored_pw = str(match.iloc[0]["password"]).strip()
-            if stored_pw == login_pw:
-              st.session_state.logged_in = True
-              st.session_state.username = login_id
-              st.success(f"{login_id}님 환영합니다!")
-              st.rerun()
+          try:
+            res = (
+                supabase.table("users")
+                .select("password")
+                .eq("username", login_id)
+                .execute()
+            )
+            if res.data:
+              stored_pw = str(res.data[0]["password"]).strip()
+              if stored_pw == login_pw:
+                st.session_state.logged_in = True
+                st.session_state.username = login_id
+                st.success(f"{login_id}님 환영합니다!")
+                st.rerun()
+              else:
+                st.error("비밀번호가 일치하지 않습니다.")
             else:
-              st.error("비밀번호가 일치하지 않습니다.")
-          else:
-            st.error("존재하지 않는 아이디입니다.")
+              st.error("존재하지 않는 아이디입니다.")
+          except Exception as err:
+            st.error(f"로그인 중 오류 발생: {err}")
 
   # 2) 회원가입 탭
   with tab_register:
@@ -86,36 +92,85 @@ if not st.session_state.logged_in:
         elif reg_pw != reg_pw_confirm:
           st.error("비밀번호가 서로 일치하지 않습니다.")
         else:
-          users_df = pd.read_csv(USERS_FILE)
-          users_df["username"] = users_df["username"].astype(str).str.strip()
-
-          if reg_id in users_df["username"].values:
-            st.error(
-                "이미 존재하는 아이디입니다. 다른 아이디를 사용해 주세요."
+          try:
+            # 아이디 중복 확인
+            check_res = (
+                supabase.table("users")
+                .select("username")
+                .eq("username", reg_id)
+                .execute()
             )
-          else:
-            # 새 사용자 추가
-            new_user_row = pd.DataFrame(
-                {"username": [reg_id], "password": [reg_pw]}
-            )
-            users_df = pd.concat([users_df, new_user_row], ignore_index=True)
-            users_df.to_csv(USERS_FILE, index=False)
+            if check_res.data:
+              st.error(
+                  "이미 존재하는 아이디입니다. 다른 아이디를 사용해 주세요."
+              )
+            else:
+              # Supabase users 테이블에 계정 추가
+              supabase.table("users").insert(
+                  {"username": reg_id, "password": reg_pw}
+              ).execute()
+              st.success(
+                  "🎉 회원가입이 완료되었습니다! '로그인' 탭에서 로그인해 주세요."
+              )
+          except Exception as err:
+            st.error(f"회원가입 중 오류 발생: {err}")
 
-            # 신규 사용자용 완전히 빈 포트폴리오 파일 생성
-            new_portfolio_file = f"portfolio_{reg_id}.csv"
-            empty_portfolio = pd.DataFrame(
-                columns=["티커", "수량", "연 예상 성장률(%)", "연 회수율(%)"]
-            )
-            empty_portfolio.to_csv(new_portfolio_file, index=False)
-
-            st.success(
-                "🎉 회원가입이 완료되었습니다! '로그인' 탭에서 로그인해 주세요."
-            )
-
-  st.stop()  # 로그인 전에는 아래 메인 앱이 실행되지 않도록 차단
+  st.stop()
 
 
-# --- [3] 로그인 이후 메인 앱 로직 ---
+# --- [3] 로그인 이후 메인 앱 로직 (데이터베이스 연동 함수) ---
+
+
+def load_user_portfolio(username):
+  try:
+    res = (
+        supabase.table("portfolios")
+        .select("ticker, shares, growth_rate, return_rate")
+        .eq("username", username)
+        .execute()
+    )
+    data = res.data
+    if not data:
+      return pd.DataFrame(
+          columns=["티커", "수량", "연 예상 성장률(%)", "연 회수율(%)"]
+      )
+    df = pd.DataFrame(data)
+    df = df.rename(
+        columns={
+            "ticker": "티커",
+            "shares": "수량",
+            "growth_rate": "연 예상 성장률(%)",
+            "return_rate": "연 회수율(%)",
+        }
+    )
+    return df
+  except Exception:
+    return pd.DataFrame(
+        columns=["티커", "수량", "연 예상 성장률(%)", "연 회수율(%)"]
+    )
+
+
+def save_user_portfolio(username, df):
+  try:
+    # 기존 해당 유저 데이터 전부 삭제 후 최신 상태로 덮어쓰기 (가장 안정적)
+    supabase.table("portfolios").delete().eq("username", username).execute()
+
+    active_rows = df[df["수량"] > 0]
+    if not active_rows.empty:
+      records = []
+      for _, row in active_rows.iterrows():
+        records.append({
+            "username": username,
+            "ticker": str(row["티커"]).strip().upper(),
+            "shares": float(row["수량"]),
+            "growth_rate": float(row["연 예상 성장률(%)"]),
+            "return_rate": float(row["연 회수율(%)"]),
+        })
+      if records:
+        supabase.table("portfolios").insert(records).execute()
+  except Exception as e:
+    st.error(f"데이터 저장 중 오류가 발생했습니다: {e}")
+
 
 # 상단 헤더 및 로그아웃 버튼
 top_col1, top_col2 = st.columns([8, 2])
@@ -134,23 +189,14 @@ with top_col2:
 
 st.divider()
 
-# 사용자별 개별 포트폴리오 파일 매핑
-DATA_FILE = f"portfolio_{st.session_state.username}.csv"
 sidebar_input_cols = ["티커", "수량", "연 예상 성장률(%)", "연 회수율(%)"]
-
-# 사용자의 포트폴리오 파일이 없으면 빈 파일 생성
-if not os.path.exists(DATA_FILE):
-  empty_df = pd.DataFrame(columns=sidebar_input_cols)
-  empty_df.to_csv(DATA_FILE, index=False)
-
-saved_df = pd.read_csv(DATA_FILE)
 
 if (
     "portfolio" not in st.session_state
     or st.session_state.portfolio is None
     or st.session_state.get("current_user") != st.session_state.username
 ):
-  st.session_state.portfolio = saved_df
+  st.session_state.portfolio = load_user_portfolio(st.session_state.username)
   st.session_state.current_user = st.session_state.username
 
 
@@ -347,7 +393,7 @@ with st.sidebar:
             .astype(float)
         )
 
-        current_portfolio.to_csv(DATA_FILE, index=False)
+        save_user_portfolio(st.session_state.username, current_portfolio)
         st.session_state.portfolio = current_portfolio
         st.rerun()
 
@@ -370,7 +416,7 @@ with st.sidebar:
 
   if not edited_df.equals(current_setting_df):
     st.session_state.portfolio = edited_df.copy()
-    edited_df.to_csv(DATA_FILE, index=False)
+    save_user_portfolio(st.session_state.username, edited_df)
     st.rerun()
 
 
