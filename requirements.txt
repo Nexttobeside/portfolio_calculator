@@ -1,7 +1,7 @@
-streamlit
-pandas
-numpy
+supabase
 matplotlib
+numpy
+pandas
 squarify
+streamlit
 yfinance
-PyGithub
