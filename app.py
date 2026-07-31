@@ -22,13 +22,13 @@ DATA_FILE = "portfolio.csv"
 
 # 1. 파일이 없을 때만 기본값으로 생성하고, 이미 존재하면 기존 사용자 설정을 그대로 로드
 if not os.path.exists(DATA_FILE):
-  default_df = pd.DataFrame({
-      "티커": ["AAPL", "TSLA", "MSFT"],
-      "수량": [10.0, 5.0, 8.0],
-      "연 예상 성장률(%)": [12.0, 20.0, 15.0],
-      "연 회수율(%)": [0.5, 0.0, 0.7],
-  })
-  default_df.to_csv(DATA_FILE, index=False)
+    default_df = pd.DataFrame({
+        "티커": ["AAPL", "TSLA", "MSFT"],
+        "수량": [10.0, 5.0, 8.0],
+        "연 예상 성장률(%)": [12.0, 20.0, 15.0],
+        "연 회수율(%)": [0.5, 0.0, 0.7],
+    })
+    default_df.to_csv(DATA_FILE, index=False)
 
 saved_df = pd.read_csv(DATA_FILE)
 
@@ -60,13 +60,16 @@ def get_current_prices(tickers):
   return current_prices_temp
 
 
-# 데이터 정합성 보장 및 사이드바 평가금액 내림차순 정렬
-sidebar_input_cols = ["티커", "수량", "연 예상 성장률(%)", "연 회수율(%)"]
+# 데이터 정합성 보장 (사이드바 정렬은 사용자가 직접 조절하도록 강제 내림차순 정렬 제거)
+sidebar_input_cols = ["티커", "연 예상 성장률(%)", "연 회수율(%)"]
 for col in sidebar_input_cols:
   if col not in st.session_state.portfolio.columns:
     st.session_state.portfolio[col] = (
-        0.0 if col in ["수량", "연 예상 성장률(%)", "연 회수율(%)"] else ""
+        0.0 if col in ["연 예상 성장률(%)", "연 회수율(%)"] else ""
     )
+
+if "수량" not in st.session_state.portfolio.columns:
+  st.session_state.portfolio["수량"] = 0.0
 
 for col in ["수량", "연 예상 성장률(%)", "연 회수율(%)"]:
   st.session_state.portfolio[col] = (
@@ -77,19 +80,6 @@ for col in ["수량", "연 예상 성장률(%)", "연 회수율(%)"]:
 
 all_tickers = st.session_state.portfolio["티커"].astype(str).tolist()
 all_prices = get_current_prices(all_tickers)
-
-st.session_state.portfolio["_현재가"] = st.session_state.portfolio["티커"].map(
-    all_prices
-)
-st.session_state.portfolio["_평가금액"] = (
-    st.session_state.portfolio["수량"] * st.session_state.portfolio["_현재가"]
-)
-
-st.session_state.portfolio = (
-    st.session_state.portfolio.sort_values(by="_평가금액", ascending=False)
-    .drop(columns=["_현재가", "_평가금액"])
-    .reset_index(drop=True)
-)
 
 # 사전 계산: 종합 성과 요약에 사용할 전체 포트폴리오 가치 및 가중치 산출
 raw_df_calc = st.session_state.portfolio.copy()
@@ -143,7 +133,7 @@ col3.metric("포트폴리오 연 예상 회수율", f"{total_weighted_return:.2f
 st.divider()
 
 
-# ⭐️ 사이드바: 매수/매도 거래 입력 및 구체화된 회수율 설명 적용
+# ⭐️ 사이드바: 매수/매도 거래 입력 및 수량 제외된 순서 변경 가능 설정 에디터
 with st.sidebar:
   st.header("🛒 매수 / 매도 거래 입력")
   with st.form("trade_form", clear_on_submit=True):
@@ -221,6 +211,7 @@ with st.sidebar:
         current_portfolio["수량"] = (
             pd.to_numeric(current_portfolio["수량"], errors="coerce")
             .fillna(0.0)
+            .astype(format="%f")
             .astype(float)
         )
         current_portfolio["연 예상 성장률(%)"] = (
@@ -244,11 +235,13 @@ with st.sidebar:
 
   st.header("⚙️ 종목별 성장률 및 회수율 설정")
   st.write(
-      "종목별 **연 예상 성장률**과 **회수율(배당+자사주 매입 등)**을 직접"
-      " 수정하거나 관리할 수 있습니다."
+      "행을 드래그하여 순서를 변경하거나, **연 예상 성장률**과"
+      " **회수율**을 수정하세요."
   )
 
-  current_setting_df = st.session_state.portfolio[sidebar_input_cols].copy()
+  # 수량 컬럼을 제외한 설정 테이블용 컬럼 정의
+  setting_cols = ["티커", "연 예상 성장률(%)", "연 회수율(%)"]
+  current_setting_df = st.session_state.portfolio[setting_cols].copy()
 
   edited_df = st.data_editor(
       current_setting_df,
@@ -257,9 +250,51 @@ with st.sidebar:
       key="sidebar_editor",
   )
 
+  # 사용자가 편집기에서 순서를 바꾸거나 값을 바꿨을 때 반영
   if not edited_df.equals(current_setting_df):
-    st.session_state.portfolio = edited_df.copy()
-    edited_df.to_csv(DATA_FILE, index=False)
+    updated_portfolio = st.session_state.portfolio.copy()
+
+    # 새로 편집된 티커 순서를 기준으로 기존 전체 포트폴리오(수량 포함) 재정렬 및 병합
+    edited_tickers = edited_df["티커"].astype(str).str.strip().tolist()
+
+    # 딕셔너리 형태로 기존 수량 보존
+    shares_map = dict(
+        zip(
+            updated_portfolio["티커"].astype(str).str.strip(),
+            updated_portfolio["수량"],
+        )
+    )
+
+    new_rows = []
+    for t in edited_tickers:
+      if t:
+        matched_row = edited_df[edited_df["티커"].astype(str).str.strip() == t]
+        growth = float(matched_row["연 예상 성장률(%)"].values[0])
+        ret = float(matched_row["연 회수율(%)"].values[0])
+        shares = float(shares_map.get(t, 0.0))  # 기존 수량 유지, 없으면 0.0
+
+        new_rows.append({
+            "티커": t,
+            "수량": shares,
+            "연 예상 성장률(%)": growth,
+            "연 회수율(%)": ret,
+        })
+
+    # 에디터에 새로 추가된 종목이 있을 경우 처리
+    existing_set = set(edited_tickers)
+    for idx, row in updated_portfolio.iterrows():
+      t = str(row["티커"]).strip()
+      if t not in existing_set and t:
+        new_rows.append({
+            "티커": t,
+            "수량": float(row["수량"]),
+            "연 예상 성장률(%)": float(row["연 예상 성장률(%)"]),
+            "연 회수율(%)": float(row["연 회수율(%)"]),
+        })
+
+    final_updated_df = pd.DataFrame(new_rows)
+    st.session_state.portfolio = final_updated_df
+    final_updated_df.to_csv(DATA_FILE, index=False)
     st.rerun()
 
 
@@ -285,9 +320,7 @@ if not st.session_state.portfolio.empty:
         active_df["수량"] * active_df["실시간 주당 현재가"]
     )
 
-    active_df = active_df.sort_values(
-        by="현재 평가금액(총액)", ascending=False
-    ).reset_index(drop=True)
+    # 메인 표는 사용자가 설정한 순서(사이드바에서 정렬한 순서)를 그대로 유지하도록 내림차순 자동 정렬 제거
     active_df.index = range(1, len(active_df) + 1)
 
     if total_portfolio_value > 0:
