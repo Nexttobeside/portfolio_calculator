@@ -7,37 +7,151 @@ import streamlit as st
 import yfinance as yf
 
 st.set_page_config(
-    page_title="포트폴리오 성장률 & 회수율 계산기",
+    page_title="개인별 포트폴리오 성장률 & 회수율 계산기",
     layout="wide",
     menu_items={"Get Help": None, "Report a bug": None, "About": None},
 )
 
-st.title("📈 주식 포트폴리오 연간 성과 계산기")
-st.write(
-    "종목 거래를 관리하고 실시간 주가 반영된 전체 포트폴리오의 종합 성과를"
-    " 확인하세요."
-)
+USERS_FILE = "users.csv"
 
-DATA_FILE = "portfolio.csv"
+# --- [1] 사용자 계정 파일(users.csv) 초기화 ---
+if not os.path.exists(USERS_FILE):
+  # 최초 실행 시 기본 관리자 계정 생성 (원하시면 지우셔도 됩니다)
+  # 비밀번호는 보안을 위해 간단한 텍스트로 저장됩니다.
+  default_users = pd.DataFrame(
+      {"username": ["admin"], "password": ["1234"]}
+  )
+  default_users.to_csv(USERS_FILE, index=False)
 
-# 1. 파일이 없을 때만 기본값으로 생성하고, 이미 존재하면 기존 사용자 설정을 그대로 로드
+# 세션 상태 초기화
+if "logged_in" not in st.session_state:
+  st.session_state.logged_in = False
+if "username" not in st.session_state:
+  st.session_state.username = ""
+
+
+# --- [2] 로그인 및 회원가입 화면 ---
+if not st.session_state.logged_in:
+  st.title("🔐 포트폴리오 계산기 로그인")
+  st.write(
+      "지인 전용 공간입니다. 로그인을 하시거나 새 계정을 만들어 시작하세요."
+  )
+
+  tab_login, tab_register = st.tabs(["로그인", "회원가입"])
+
+  # 1) 로그인 탭
+  with tab_login:
+    with st.form("login_form"):
+      login_id = st.text_input("아이디", key="login_id").strip()
+      login_pw = st.text_input(
+          "비밀번호", type="password", key="login_pw"
+      ).strip()
+      submit_login = st.form_submit_button("로그인")
+
+      if submit_login:
+        if not login_id or not login_pw:
+          st.error("아이디와 비밀번호를 모두 입력해주세요.")
+        else:
+          users_df = pd.read_csv(USERS_FILE)
+          users_df["username"] = users_df["username"].astype(str).str.strip()
+
+          match = users_df[users_df["username"] == login_id]
+          if not match.empty:
+            stored_pw = str(match.iloc[0]["password"]).strip()
+            if stored_pw == login_pw:
+              st.session_state.logged_in = True
+              st.session_state.username = login_id
+              st.success(f"{login_id}님 환영합니다!")
+              st.rerun()
+            else:
+              st.error("비밀번호가 일치하지 않습니다.")
+          else:
+            st.error("존재하지 않는 아이디입니다.")
+
+  # 2) 회원가입 탭
+  with tab_register:
+    with st.form("register_form"):
+      reg_id = st.text_input("사용할 아이디", key="reg_id").strip()
+      reg_pw = st.text_input(
+          "사용할 비밀번호", type="password", key="reg_pw"
+      ).strip()
+      reg_pw_confirm = st.text_input(
+          "비밀번호 확인", type="password", key="reg_pw_confirm"
+      ).strip()
+      submit_reg = st.form_submit_button("회원가입 하기")
+
+      if submit_reg:
+        if not reg_id or not reg_pw:
+          st.error("아이디와 비밀번호를 모두 입력해주세요.")
+        elif reg_pw != reg_pw_confirm:
+          st.error("비밀번호가 서로 일치하지 않습니다.")
+        else:
+          users_df = pd.read_csv(USERS_FILE)
+          users_df["username"] = users_df["username"].astype(str).str.strip()
+
+          if reg_id in users_df["username"].values:
+            st.error(
+                "이미 존재하는 아이디입니다. 다른 아이디를 사용해 주세요."
+            )
+          else:
+            # 새 사용자 추가
+            new_user_row = pd.DataFrame(
+                {"username": [reg_id], "password": [reg_pw]}
+            )
+            users_df = pd.concat([users_df, new_user_row], ignore_index=True)
+            users_df.to_csv(USERS_FILE, index=False)
+
+            # 신규 사용자용 완전히 빈 포트폴리오 파일 생성
+            new_portfolio_file = f"portfolio_{reg_id}.csv"
+            empty_portfolio = pd.DataFrame(
+                columns=["티커", "수량", "연 예상 성장률(%)", "연 회수율(%)"]
+            )
+            empty_portfolio.to_csv(new_portfolio_file, index=False)
+
+            st.success(
+                "🎉 회원가입이 완료되었습니다! '로그인' 탭에서 로그인해 주세요."
+            )
+
+  st.stop()  # 로그인 전에는 아래 메인 앱이 실행되지 않도록 차단
+
+
+# --- [3] 로그인 이후 메인 앱 로직 ---
+
+# 상단 헤더 및 로그아웃 버튼
+top_col1, top_col2 = st.columns([8, 2])
+with top_col1:
+  st.title("📈 주식 포트폴리오 연간 성과 계산기")
+  st.write(
+      f"👤 현재 접속 계정: **{st.session_state.username}**님 | 종목 거래를"
+      " 관리하고 포트폴리오 성과를 확인하세요."
+  )
+with top_col2:
+  if st.button("로그아웃"):
+    st.session_state.logged_in = False
+    st.session_state.username = ""
+    st.session_state.portfolio = None
+    st.rerun()
+
+st.divider()
+
+# 사용자별 개별 포트폴리오 파일 매핑
+DATA_FILE = f"portfolio_{st.session_state.username}.csv"
+sidebar_input_cols = ["티커", "수량", "연 예상 성장률(%)", "연 회수율(%)"]
+
+# 사용자의 포트폴리오 파일이 없으면 빈 파일 생성
 if not os.path.exists(DATA_FILE):
-  default_df = pd.DataFrame({
-      "티커": ["AAPL", "TSLA", "MSFT"],
-      "수량": [10.0, 5.0, 8.0],
-      "연 예상 성장률(%)": [12.0, 20.0, 15.0],
-      "연 회수율(%)": [0.5, 0.0, 0.7],
-  })
-  default_df.to_csv(DATA_FILE, index=False)
+  empty_df = pd.DataFrame(columns=sidebar_input_cols)
+  empty_df.to_csv(DATA_FILE, index=False)
 
 saved_df = pd.read_csv(DATA_FILE)
 
 if (
     "portfolio" not in st.session_state
     or st.session_state.portfolio is None
-    or st.session_state.portfolio.empty
+    or st.session_state.get("current_user") != st.session_state.username
 ):
   st.session_state.portfolio = saved_df
+  st.session_state.current_user = st.session_state.username
 
 
 def get_current_prices(tickers):
@@ -60,8 +174,7 @@ def get_current_prices(tickers):
   return current_prices_temp
 
 
-# 데이터 정합성 보장 및 사이드바 평가금액 내림차순 정렬
-sidebar_input_cols = ["티커", "수량", "연 예상 성장률(%)", "연 회수율(%)"]
+# 데이터 정합성 보장
 for col in sidebar_input_cols:
   if col not in st.session_state.portfolio.columns:
     st.session_state.portfolio[col] = (
@@ -75,23 +188,23 @@ for col in ["수량", "연 예상 성장률(%)", "연 회수율(%)"]:
       .astype(float)
   )
 
-all_tickers = st.session_state.portfolio["티커"].astype(str).tolist()
-all_prices = get_current_prices(all_tickers)
+# 수량이 0 이상인 항목들에 대해 현재가 조회 및 정렬
+if not st.session_state.portfolio.empty:
+  all_tickers = st.session_state.portfolio["티커"].astype(str).tolist()
+  all_prices = get_current_prices(all_tickers)
+  st.session_state.portfolio["_현재가"] = st.session_state.portfolio[
+      "티커"
+  ].map(all_prices)
+  st.session_state.portfolio["_평가금액"] = (
+      st.session_state.portfolio["수량"] * st.session_state.portfolio["_현재가"]
+  )
+  st.session_state.portfolio = (
+      st.session_state.portfolio.sort_values(by="_평가금액", ascending=False)
+      .drop(columns=["_현재가", "_평가금액"])
+      .reset_index(drop=True)
+  )
 
-st.session_state.portfolio["_현재가"] = st.session_state.portfolio["티커"].map(
-    all_prices
-)
-st.session_state.portfolio["_평가금액"] = (
-    st.session_state.portfolio["수량"] * st.session_state.portfolio["_현재가"]
-)
-
-st.session_state.portfolio = (
-    st.session_state.portfolio.sort_values(by="_평가금액", ascending=False)
-    .drop(columns=["_현재가", "_평가금액"])
-    .reset_index(drop=True)
-)
-
-# 사전 계산: 종합 성과 요약에 사용할 전체 포트폴리오 가치 및 가중치 산출
+# 사전 계산: 종합 성과 요약 산출
 raw_df_calc = st.session_state.portfolio.copy()
 raw_df_calc["수량"] = pd.to_numeric(raw_df_calc["수량"], errors="coerce").fillna(
     0.0
@@ -143,7 +256,7 @@ col3.metric("포트폴리오 연 예상 회수율", f"{total_weighted_return:.2f
 st.divider()
 
 
-# ⭐️ 사이드바: 매수/매도 거래 입력 및 구체화된 회수율 설명 적용
+# ⭐️ 사이드바: 매수/매도 거래 입력 및 종목별 설정 배치
 with st.sidebar:
   st.header("🛒 매수 / 매도 거래 입력")
   with st.form("trade_form", clear_on_submit=True):
@@ -189,8 +302,7 @@ with st.sidebar:
             current_portfolio.loc[idx, "수량"] = max(0.0, new_shares)
             if new_shares <= 0:
               st.warning(
-                  f"[{trade_ticker}] 전량 매도되어 분석 현황에서 제외되었으나,"
-                  " 설정에는 수량 0으로 유지됩니다."
+                  f"[{trade_ticker}] 전량 매도되어 분석 현황에서 제외되었습니다."
               )
             else:
               st.success(
@@ -211,8 +323,7 @@ with st.sidebar:
                 [current_portfolio, new_row], ignore_index=True
             )
             st.success(
-                f"신규 종목 [{trade_ticker}]이(가) 설정에 추가되고 매수가"
-                " 반영되었습니다!"
+                f"신규 종목 [{trade_ticker}]이(가) 추가되고 매수가 반영되었습니다!"
             )
 
         if "티커_upper" in current_portfolio.columns:
@@ -263,7 +374,7 @@ with st.sidebar:
     st.rerun()
 
 
-# ⭐️ <종목별 분석 및 비중 현황> 메인 영역
+# ⭐️ 메인 영역: 종목별 분석 및 비중 현황
 if not st.session_state.portfolio.empty:
   raw_df = st.session_state.portfolio.copy()
   raw_df["수량"] = pd.to_numeric(raw_df["수량"], errors="coerce").fillna(0.0)
@@ -305,7 +416,6 @@ if not st.session_state.portfolio.empty:
         }
     )
 
-    # 결과 테이블 출력
     st.subheader("📊 종목별 분석 및 비중 현황")
     display_df = table_df[
         [
@@ -334,7 +444,6 @@ if not st.session_state.portfolio.empty:
     # 트리맵 시각화
     if total_portfolio_value > 0:
       st.subheader("🟩 종목별 비중")
-
       fig, ax = plt.subplots(figsize=(10, 5))
 
       sizes = active_df["포트폴리오 비중(%)"].values
@@ -357,11 +466,7 @@ if not st.session_state.portfolio.empty:
       ]
 
       for i, rect in enumerate(rects):
-        x = rect["x"]
-        y = rect["y"]
-        dx = rect["dx"]
-        dy = rect["dy"]
-
+        x, y, dx, dy = rect["x"], rect["y"], rect["dx"], rect["dy"]
         ax.bar(
             x=x,
             height=dy,
@@ -376,7 +481,6 @@ if not st.session_state.portfolio.empty:
 
         area = dx * dy
         weight_val = sizes[i]
-
         box_diagonal = np.sqrt(dx**2 + dy**2)
         target_text_diagonal = box_diagonal / 4.0
 
@@ -443,6 +547,11 @@ if not st.session_state.portfolio.empty:
       st.pyplot(fig)
   else:
     st.info(
-        "현재 보유 중인 종목이 없습니다. (사이드바 거래 입력 및 설정을 통해 종목을"
-        " 추가해 주세요.)"
+        "💡 등록된 종목이 없습니다. 사이드바의 **[매수 / 매도 거래 입력]**을 통해"
+        " 첫 종목을 추가해 보세요!"
     )
+else:
+  st.info(
+      "💡 등록된 종목이 없습니다. 사이드바의 **[매수 / 매도 거래 입력]**을 통해"
+      " 첫 종목을 추가해 보세요!"
+  )
