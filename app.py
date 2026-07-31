@@ -20,7 +20,7 @@ st.write(
 
 DATA_FILE = "portfolio.csv"
 
-# ⭐️ 1. 파일이 없을 때만 기본값으로 생성하고, 이미 존재하면 기존 사용자 설정을 그대로 로드
+# 1. 파일이 없을 때만 기본값으로 생성하고, 이미 존재하면 기존 사용자 설정을 그대로 로드
 if not os.path.exists(DATA_FILE):
   default_df = pd.DataFrame({
       "티커": ["AAPL", "TSLA", "MSFT"],
@@ -32,7 +32,6 @@ if not os.path.exists(DATA_FILE):
 
 saved_df = pd.read_csv(DATA_FILE)
 
-# 세션 상태에 포트폴리오 설정 데이터가 없으면 파일 데이터로 초기화
 if (
     "portfolio" not in st.session_state
     or st.session_state.portfolio is None
@@ -61,23 +60,45 @@ def get_current_prices(tickers):
   return current_prices_temp
 
 
-# ⭐️ 사이드바 설정 (<포트폴리오 설정> 전용 공간: 수량 0인 미보유 종목도 영구 보존)
+# ⭐️ 데이터 정합성 보장 및 사이드바 <포트폴리오 설정> 평가금액 내림차순 정렬
+sidebar_input_cols = ["티커", "수량", "연 예상 성장률(%)", "연 회수율(%)"]
+for col in sidebar_input_cols:
+  if col not in st.session_state.portfolio.columns:
+    st.session_state.portfolio[col] = (
+        0.0 if col in ["수량", "연 예상 성장률(%)", "연 회수율(%)"] else ""
+    )
+
+for col in ["수량", "연 예상 성장률(%)", "연 회수율(%)"]:
+  st.session_state.portfolio[col] = (
+      pd.to_numeric(st.session_state.portfolio[col], errors="coerce")
+      .fillna(0.0)
+      .astype(float)
+  )
+
+# 전체 티커 현재가 조회 후 평가금액 기준으로 내림차순 정렬 적용
+all_tickers = st.session_state.portfolio["티커"].astype(str).tolist()
+all_prices = get_current_prices(all_tickers)
+
+st.session_state.portfolio["_현재가"] = st.session_state.portfolio["티커"].map(
+    all_prices
+)
+st.session_state.portfolio["_평가금액"] = (
+    st.session_state.portfolio["수량"] * st.session_state.portfolio["_현재가"]
+)
+
+st.session_state.portfolio = (
+    st.session_state.portfolio.sort_values(by="_평가금액", ascending=False)
+    .drop(columns=["_현재가", "_평가금액"])
+    .reset_index(drop=True)
+)
+
+# ⭐️ 사이드바 설정 (<포트폴리오 설정>: 평가금액 내림차순으로 정렬된 목록 표시)
 with st.sidebar:
   st.header("⚙️ 포트폴리오 설정")
   st.write(
       "종목별 **연 예상 성장률**과 **회수율(배당 등)**을 미리 설정하거나 종목을"
       " 관리할 수 있습니다."
   )
-
-  sidebar_input_cols = ["티커", "수량", "연 예상 성장률(%)", "연 회수율(%)"]
-
-  for col in sidebar_input_cols:
-    if col not in st.session_state.portfolio.columns:
-      st.session_state.portfolio[col] = (
-          0.0
-          if col in ["수량", "연 예상 성장률(%)", "연 회수율(%)"]
-          else ""
-      )
 
   current_setting_df = st.session_state.portfolio[sidebar_input_cols].copy()
 
@@ -88,7 +109,6 @@ with st.sidebar:
       key="sidebar_editor",
   )
 
-  # 사용자가 사이드바 설정을 변경했을 때 즉시 세션 및 파일 동기화
   if not edited_df.equals(current_setting_df):
     st.session_state.portfolio = edited_df.copy()
     edited_df.to_csv(DATA_FILE, index=False)
@@ -196,7 +216,7 @@ with st.form("trade_form", clear_on_submit=True):
 
 st.divider()
 
-# ⭐️ <포트폴리오 설정>과 완벽히 분리된 <종목별 분석 및 비중 현황> 계산 영역
+# ⭐️ <종목별 분석 및 비중 현황> 영역
 if not st.session_state.portfolio.empty:
   raw_df = st.session_state.portfolio.copy()
   raw_df["수량"] = pd.to_numeric(raw_df["수량"], errors="coerce").fillna(0.0)
@@ -207,7 +227,7 @@ if not st.session_state.portfolio.empty:
       raw_df["연 회수율(%)"], errors="coerce"
   ).fillna(0.0)
 
-  # 오직 수량이 0보다 큰(보유 중인) 종목들만 분석 현황에 반영
+  # 수량이 0보다 큰 보유 종목만 필터링
   active_df = raw_df[raw_df["수량"] > 0].copy()
 
   if not active_df.empty:
@@ -219,12 +239,10 @@ if not st.session_state.portfolio.empty:
         active_df["수량"] * active_df["실시간 주당 현재가"]
     )
 
-    # 평가금액 기준 내림차순 정렬
+    # 평가금액 기준 내림차순 정렬 및 1번부터 인덱스 번호 매기기
     active_df = active_df.sort_values(
         by="현재 평가금액(총액)", ascending=False
     ).reset_index(drop=True)
-
-    # 1번부터 시작하도록 인덱스 번호 부여
     active_df.index = range(1, len(active_df) + 1)
 
     total_portfolio_value = active_df["현재 평가금액(총액)"].sum()
