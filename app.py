@@ -20,7 +20,7 @@ st.write(
 
 DATA_FILE = "portfolio.csv"
 
-# 1. 파일이 존재하면 읽어오고, 없으면 기본값으로 파일 생성 후 읽기
+# ⭐️ 1. 파일이 없을 때만 기본값으로 생성하고, 이미 존재하면 기존 사용자 설정을 그대로 로드
 if not os.path.exists(DATA_FILE):
   default_df = pd.DataFrame({
       "티커": ["AAPL", "TSLA", "MSFT"],
@@ -32,7 +32,7 @@ if not os.path.exists(DATA_FILE):
 
 saved_df = pd.read_csv(DATA_FILE)
 
-# 세션 상태에 포트폴리오 설정 데이터가 없거나 비어있으면 파일에서 불러와 초기화
+# 세션 상태에 포트폴리오 설정 데이터가 없으면 파일 데이터로 초기화
 if (
     "portfolio" not in st.session_state
     or st.session_state.portfolio is None
@@ -61,7 +61,7 @@ def get_current_prices(tickers):
   return current_prices_temp
 
 
-# ⭐️ 사이드바 설정 (<포트폴리오 설정> 전용 공간: 보유 수량 0인 미보유 종목도 절대 사라지지 않고 유지됨)
+# ⭐️ 사이드바 설정 (<포트폴리오 설정> 전용 공간: 수량 0인 미보유 종목도 영구 보존)
 with st.sidebar:
   st.header("⚙️ 포트폴리오 설정")
   st.write(
@@ -71,7 +71,6 @@ with st.sidebar:
 
   sidebar_input_cols = ["티커", "수량", "연 예상 성장률(%)", "연 회수율(%)"]
 
-  # 세션 데이터 정합성 보장
   for col in sidebar_input_cols:
     if col not in st.session_state.portfolio.columns:
       st.session_state.portfolio[col] = (
@@ -173,7 +172,6 @@ with st.form("trade_form", clear_on_submit=True):
       if "티커_upper" in current_portfolio.columns:
         current_portfolio = current_portfolio.drop(columns=["티커_upper"])
 
-      # NaN 값 방지 처리
       current_portfolio["수량"] = (
           pd.to_numeric(current_portfolio["수량"], errors="coerce")
           .fillna(0.0)
@@ -221,12 +219,12 @@ if not st.session_state.portfolio.empty:
         active_df["수량"] * active_df["실시간 주당 현재가"]
     )
 
-    # 평가금액 기준으로 내림차순 정렬
+    # 평가금액 기준 내림차순 정렬
     active_df = active_df.sort_values(
         by="현재 평가금액(총액)", ascending=False
     ).reset_index(drop=True)
 
-    # 번호 매기기를 1부터 시작하도록 설정
+    # 1번부터 시작하도록 인덱스 번호 부여
     active_df.index = range(1, len(active_df) + 1)
 
     total_portfolio_value = active_df["현재 평가금액(총액)"].sum()
