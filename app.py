@@ -12,8 +12,7 @@ st.set_page_config(
 )
 
 # 파일 경로 설정
-DATA_FILE = "portfolio.csv"
-USERS_FILE = "users.csv"  # 로컬 계정 관리용 파일 (선택사항이지만 깔끔하게 분리)
+USERS_FILE = "users.csv"  # 로컬 계정 관리용 파일
 
 # 세션 상태 초기화
 if "logged_in" not in st.session_state:
@@ -28,7 +27,6 @@ def load_local_users():
     if pd.io.common.file_exists(USERS_FILE):
       return pd.read_csv(USERS_FILE)
     else:
-      # 기본 테스트 계정이 없다면 빈 데이터프레임 생성
       df = pd.DataFrame(columns=["username", "password"])
       df.to_csv(USERS_FILE, index=False)
       return df
@@ -68,8 +66,10 @@ if not st.session_state.logged_in:
           st.error("아이디와 비밀번호를 모두 입력해주세요.")
         else:
           users_df = load_local_users()
-          matched = users_df[users_df["username"].astype(str).str.strip() == login_id]
-          
+          matched = users_df[
+              users_df["username"].astype(str).str.strip() == login_id
+          ]
+
           if not matched.empty:
             stored_pw = str(matched.iloc[0]["password"]).strip()
             if stored_pw == login_pw:
@@ -101,7 +101,9 @@ if not st.session_state.logged_in:
           st.error("비밀번호가 서로 일치하지 않습니다.")
         else:
           users_df = load_local_users()
-          if not users_df[users_df["username"].astype(str).str.strip() == reg_id].empty:
+          if not users_df[
+              users_df["username"].astype(str).str.strip() == reg_id
+          ].empty:
             st.error("이미 존재하는 아이디입니다. 다른 아이디를 사용해 주세요.")
           else:
             save_local_user(reg_id, reg_pw)
@@ -112,13 +114,21 @@ if not st.session_state.logged_in:
   st.stop()
 
 
-# --- [3] 로그인 이후 메인 앱 로직 (로컬 CSV 연동) ---
+# --- [3] 로그인 이후 메인 앱 로직 (사용자별 CSV 연동 함수) ---
+
+
+def get_user_csv_filename(username):
+  safe_username = "".join(
+      c for c in username if c.isalnum() or c in ("_", "-")
+  )
+  return f"{safe_username}_portfolio.csv"
 
 
 def load_user_portfolio(username):
   try:
-    if pd.io.common.file_exists(DATA_FILE):
-      df = pd.read_csv(DATA_FILE)
+    file_name = get_user_csv_filename(username)
+    if pd.io.common.file_exists(file_name):
+      df = pd.read_csv(file_name)
       required_cols = ["티커", "수량", "연 예상 성장률(%)", "연 회수율(%)"]
       for col in required_cols:
         if col not in df.columns:
@@ -136,7 +146,8 @@ def load_user_portfolio(username):
 
 def save_user_portfolio(username, df):
   try:
-    df.to_csv(DATA_FILE, index=False)
+    file_name = get_user_csv_filename(username)
+    df.to_csv(file_name, index=False)
   except Exception as e:
     st.error(f"데이터 저장 중 오류가 발생했습니다: {e}")
 
