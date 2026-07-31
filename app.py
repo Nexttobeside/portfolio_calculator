@@ -274,7 +274,7 @@ col3.metric("포트폴리오 연 예상 회수율", f"{total_weighted_return:.2f
 st.divider()
 
 
-# ⭐️ 사이드바: 매수/매도 거래 입력 및 종목별 설정 배치
+# ⭐️ 사이드바: 매수/매도 거래 입력 및 종목별 상세 설정 (직관적인 숫자 입력 방식)
 with st.sidebar:
   st.header("🛒 매수 / 매도 거래 입력")
   with st.form("trade_form", clear_on_submit=True):
@@ -372,25 +372,64 @@ with st.sidebar:
   st.divider()
 
   st.header("⚙️ 종목별 성장률 및 회수율 설정")
-  st.write(
-      "종목별 **연 예상 성장률**과 **회수율(배당+자사주 매입 등)**을 직접"
-      " 수정하거나 관리할 수 있습니다."
-  )
+  st.write("각 종목의 수치나 비율을 수정하면 파일에 즉시 반영됩니다.")
 
-  current_setting_df = st.session_state.portfolio[sidebar_input_cols].copy()
+  if not st.session_state.portfolio.empty:
+    updated_rows = []
+    has_changed = False
 
-  edited_df = st.data_editor(
-      current_setting_df,
-      num_rows="dynamic",
-      use_container_width=True,
-      key="sidebar_editor",
-  )
+    for idx, row in st.session_state.portfolio.iterrows():
+      ticker = str(row["티커"])
+      st.markdown(f"**📌 {ticker}**")
 
-  if st.button("💾 변경된 설정 저장하기"):
-    st.session_state.portfolio = edited_df.copy()
-    save_user_portfolio(st.session_state.username, edited_df)
-    st.success("포트폴리오가 'portfolio.csv'에 성공적으로 저장되었습니다!")
-    st.rerun()
+      col_a, col_b, col_c = st.columns(3)
+      with col_a:
+        new_shares = st.number_input(
+            "수량",
+            min_value=0.0,
+            value=float(row["수량"]),
+            step=1.0,
+            key=f"shares_{idx}_{ticker}",
+        )
+      with col_b:
+        new_growth = st.number_input(
+            "성장률(%)",
+            value=float(row["연 예상 성장률(%)"]),
+            step=0.5,
+            key=f"growth_{idx}_{ticker}",
+        )
+      with col_c:
+        new_return = st.number_input(
+            "회수율(%)",
+            value=float(row["연 회수율(%)"]),
+            step=0.5,
+            key=f"return_{idx}_{ticker}",
+        )
+
+      # 값이 변경되었는지 감지
+      if (
+          new_shares != float(row["수량"])
+          or new_growth != float(row["연 예상 성장률(%)"])
+          or new_return != float(row["연 회수율(%)"])
+      ):
+        has_changed = True
+
+      updated_rows.append({
+          "티커": ticker,
+          "수량": new_shares,
+          "연 예상 성장률(%)": new_growth,
+          "연 회수율(%)": new_return,
+      })
+      st.markdown("---")
+
+    # 값이 변경되었다면 자동으로 포트폴리오 갱신 및 파일 저장
+    if has_changed:
+      new_df = pd.DataFrame(updated_rows)
+      st.session_state.portfolio = new_df
+      save_user_portfolio(st.session_state.username, new_df)
+      st.rerun()
+  else:
+    st.info("등록된 종목이 없습니다.")
 
 
 # ⭐️ 메인 영역: 종목별 분석 및 비중 현황
