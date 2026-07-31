@@ -4,4 +4,5 @@ numpy
 matplotlib
 squarify
 yfinance
-sqlalchemy
+gspread
+google-auth
