@@ -493,53 +493,57 @@ with tab2:
       " 회수율**을 계산합니다."
   )
 
-  sim_col1, sim_col2, sim_col3 = st.columns(3)
-  with sim_col1:
-    input_init_return = st.number_input(
-        "초기 회수율 (%)", value=3.0, step=0.1, format="%.2f"
-    )
-  with sim_col2:
-    input_growth_rate = st.number_input(
-        "회수율 연 예상 성장률 (%)", value=10.0, step=0.5, format="%.2f"
-    )
-  with sim_col3:
-    input_years = st.number_input(
-        "목표 기간 (년)", min_value=1, max_value=50, value=10, step=1
-    )
+  with st.form("simulator_form"):
+    sim_col1, sim_col2, sim_col3 = st.columns(3)
+    with sim_col1:
+      input_init_return = st.number_input(
+          "초기 회수율 (%)", value=3.0, step=0.1, format="%.2f"
+      )
+    with sim_col2:
+      input_growth_rate = st.number_input(
+          "회수율 연 예상 성장률 (%)", value=10.0, step=0.5, format="%.2f"
+      )
+    with sim_col3:
+      input_years = st.number_input(
+          "목표 기간 (년)", min_value=1, max_value=50, value=10, step=1
+      )
 
-  # 미래 회수율 계산 (복리 공식: Initial * (1 + g)^(years - 1))
-  # 예: 1년 차는 초기값 그대로, 2년 차부터 성장률 적용
-  future_return_val = input_init_return * (
-      (1 + input_growth_rate / 100.0) ** (input_years - 1)
-      if input_years > 1
-      else 1.0
-  )
+    submit_sim = st.form_submit_button("미래 회수율 계산하기")
 
-  st.info(
-      f"📌 **시뮬레이션 결과**: 초기 회수율 **{input_init_return:.2f}%**인"
-      f" 상품이 매년 **{input_growth_rate:.2f}%**씩 성정할 때, **{input_years}년"
-      f" 뒤**의 실효 회수율은 원금 대비 약 **{future_return_val:.2f}%**가"
-      f" 됩니다!"
-  )
+  if submit_sim:
+    future_return_val = input_init_return * (
+        (1 + input_growth_rate / 100.0) ** (input_years - 1)
+        if input_years > 1
+        else 1.0
+    )
+    st.success(
+        f"📌 **시뮬레이션 결과**: 초기 회수율 **{input_init_return:.2f}%**인"
+        f" 상품이 매년 **{input_growth_rate:.2f}%**씩 성장할 때, **{input_years}년"
+        f" 뒤**의 실효 회수율은 원금 대비 약 **{future_return_val:.2f}%**가"
+        " 됩니다!"
+    )
 
   st.divider()
 
-  st.subheader("📊 보유 종목별 미래 회수율 비교 (현재 / 3년후 / 5년후 / 10년후)")
+  st.subheader(
+      "📊 설정된 전체 종목별 미래 회수율 비교 (현재 / 3년후 / 5년후 / 10년후)"
+  )
   st.write(
-      "현재 사이드바 설정에 등록된 모든 종목들의 **시간 경과에 따른 회수율"
-      " 성장 추이**를 비교합니다."
+      "사이드바 설정에 등록된 **모든 종목**(수량 무관)들의 **시간 경과에 따른"
+      " 회수율 성장 추이**를 비교합니다."
   )
 
   if not st.session_state.portfolio.empty:
     port_sim_df = st.session_state.portfolio.copy()
-    port_sim_df["수량"] = pd.to_numeric(
-        port_sim_df["수량"], errors="coerce"
-    ).fillna(0.0)
-    active_sim_df = port_sim_df[port_sim_df["수량"] > 0].copy()
+    # 티커가 존재하고 비어있지 않은 항목들 대상
+    port_sim_df["티커"] = port_sim_df["티커"].astype(str).str.strip()
+    valid_sim_df = port_sim_df[
+        (port_sim_df["티커"] != "") & (port_sim_df["티커"].notna())
+    ].copy()
 
-    if not active_sim_df.empty:
+    if not valid_sim_df.empty:
       comparison_rows = []
-      for _, row in active_sim_df.iterrows():
+      for _, row in valid_sim_df.iterrows():
         ticker = row["티커"]
         init_r = float(row["연 회수율(%)"])
         g_rate = float(row["연 예상 성장률(%)"]) / 100.0
@@ -574,6 +578,6 @@ with tab2:
           use_container_width=True,
       )
     else:
-      st.info("보유 중인 종목이 없어 비교할 데이터가 없습니다.")
+      st.info("등록된 종목이 없습니다.")
   else:
     st.info("등록된 포트폴리오 데이터가 없습니다.")
