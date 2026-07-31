@@ -1,4 +1,6 @@
+import base64
 import os
+from github import Github
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -20,24 +22,60 @@ st.write(
 
 DATA_FILE = "portfolio.csv"
 
-# 1. 파일이 없을 때만 기본값으로 생성하고, 이미 존재하면 기존 사용자 설정을 그대로 로드
-if not os.path.exists(DATA_FILE):
-  default_df = pd.DataFrame({
-      "티커": ["AAPL", "TSLA", "MSFT"],
-      "수량": [10.0, 5.0, 8.0],
-      "연 예상 성장률(%)": [12.0, 20.0, 15.0],
-      "연 회수율(%)": [0.5, 0.0, 0.7],
-  })
-  default_df.to_csv(DATA_FILE, index=False)
+# GitHub 설정 불러오기 (st.secrets 활용)
+GITHUB_TOKEN = st.secrets.get("github_token", "")
+REPO_NAME = st.secrets.get("github_repo", "")
 
-saved_df = pd.read_csv(DATA_FILE)
 
+# GitHub에 portfolio.csv를 자동으로 업데이트(커밋 & 푸시)하는 함수
+def save_to_github(df, commit_message="Update portfolio.csv via Streamlit app"):
+  if not GITHUB_TOKEN or not REPO_NAME:
+    # 깃허브 설정이 안 되어 있는 경우 로컬 파일로 대체 저장
+    df.to_csv(DATA_FILE, index=False)
+    return False
+
+  try:
+    g = Github(GITHUB_TOKEN)
+    repo = g.get_repo(REPO_NAME)
+    csv_content = df.to_csv(index=False)
+
+    try:
+      file = repo.get_contents(DATA_FILE)
+      repo.update_file(
+          path=file.path,
+          message=commit_message,
+          content=csv_content,
+          sha=file.sha,
+      )
+    except Exception:
+      # 파일이 아예 없는 경우 새로 생성
+      repo.create_file(
+          path=DATA_FILE, message="Create portfolio.csv", content=csv_content
+      )
+    return True
+  except Exception as e:
+    st.error(f"GitHub 자동 저장 실패: {e}")
+    df.to_csv(DATA_FILE, index=False)  차선책으로 로컬 저장
+    return False
+
+
+# 1. 최초 데이터 로드 (session_state 활용 및 파일/기본값 처리)
 if (
     "portfolio" not in st.session_state
     or st.session_state.portfolio is None
     or st.session_state.portfolio.empty
 ):
-  st.session_state.portfolio = saved_df
+  if os.path.exists(DATA_FILE):
+    st.session_state.portfolio = pd.read_csv(DATA_FILE)
+  else:
+    default_df = pd.DataFrame({
+        "티커": ["AAPL", "TSLA", "MSFT"],
+        "수량": [10.0, 5.0, 8.0],
+        "연 예상 성장률(%)": [12.0, 20.0, 15.0],
+        "연 회수율(%)": [0.5, 0.0, 0.7],
+    })
+    default_df.to_csv(DATA_FILE, index=False)
+    st.session_state.portfolio = default_df
 
 
 def get_current_prices(tickers):
@@ -60,7 +98,7 @@ def get_current_prices(tickers):
   return current_prices_temp
 
 
-# 데이터 정합성 보장 및 사이드바 평가금액 내림차순 정렬
+# 데이터 정합성 보장 및 평가금액 내림차순 정렬
 sidebar_input_cols = ["티커", "수량", "연 예상 성장률(%)", "연 회수율(%)"]
 for col in sidebar_input_cols:
   if col not in st.session_state.portfolio.columns:
@@ -143,7 +181,7 @@ col3.metric("포트폴리오 연 예상 회수율", f"{total_weighted_return:.2f
 st.divider()
 
 
-# ⭐️ 사이드바: 매수/매도 거래 입력 및 구체화된 회수율 설명 적용
+# ⭐️ 사이드바: 매수/매도 거래 입력 및 종목 설정 관리
 with st.sidebar:
   st.header("🛒 매수 / 매도 거래 입력")
   with st.form("trade_form", clear_on_submit=True):
@@ -189,8 +227,7 @@ with st.sidebar:
             current_portfolio.loc[idx, "수량"] = max(0.0, new_shares)
             if new_shares <= 0:
               st.warning(
-                  f"[{trade_ticker}] 전량 매도되어 분석 현황에서 제외되었으나,"
-                  " 설정에는 수량 0으로 유지됩니다."
+                  f"[{trade_ticker}] 전량 매도되어 분석 현황에서 제외되었습니다."
               )
             else:
               st.success(
@@ -218,26 +255,18 @@ with st.sidebar:
         if "티커_upper" in current_portfolio.columns:
           current_portfolio = current_portfolio.drop(columns=["티커_upper"])
 
-        current_portfolio["수량"] = (
-            pd.to_numeric(current_portfolio["수량"], errors="coerce")
-            .fillna(0.0)
-            .astype(float)
-        )
-        current_portfolio["연 예상 성장률(%)"] = (
-            pd.to_numeric(
-                current_portfolio["연 예상 성장률(%)"], errors="coerce"
-            )
-            .fillna(0.0)
-            .astype(float)
-        )
-        current_portfolio["연 회수율(%)"] = (
-            pd.to_numeric(current_portfolio["연 회수율(%)"], errors="coerce")
-            .fillna(0.0)
-            .astype(float)
-        )
+        for col in ["수량", "연 예상 성장률(%)", "연 회수율(%)"]:
+          current_portfolio[col] = (
+              pd.to_numeric(current_portfolio[col], errors="coerce")
+              .fillna(0.0)
+              .astype(float)
+          )
 
-        current_portfolio.to_csv(DATA_FILE, index=False)
         st.session_state.portfolio = current_portfolio
+        save_to_github(
+            current_portfolio,
+            f"Trade update: {trade_type} {trade_ticker} {trade_shares} shares",
+        )
         st.rerun()
 
   st.divider()
@@ -258,8 +287,13 @@ with st.sidebar:
   )
 
   if not edited_df.equals(current_setting_df):
+    for col in ["수량", "연 예상 성장률(%)", "연 회수율(%)"]:
+      edited_df[col] = (
+          pd.to_numeric(edited_df[col], errors="coerce").fillna(0.0).astype(float)
+      )
+
     st.session_state.portfolio = edited_df.copy()
-    edited_df.to_csv(DATA_FILE, index=False)
+    save_to_github(edited_df, "Update portfolio settings via sidebar editor")
     st.rerun()
 
 
@@ -305,7 +339,6 @@ if not st.session_state.portfolio.empty:
         }
     )
 
-    # 결과 테이블 출력
     st.subheader("📊 종목별 분석 및 비중 현황")
     display_df = table_df[
         [
