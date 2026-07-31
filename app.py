@@ -91,7 +91,7 @@ st.session_state.portfolio = (
     .reset_index(drop=True)
 )
 
-# ⭐️ 사전 계산: 종합 성과 요약에 사용할 전체 포트폴리오 가치 및 가중치 미리 산출
+# 사전 계산: 종합 성과 요약에 사용할 전체 포트폴리오 가치 및 가중치 산출
 raw_df_calc = st.session_state.portfolio.copy()
 raw_df_calc["수량"] = pd.to_numeric(raw_df_calc["수량"], errors="coerce").fillna(
     0.0
@@ -143,7 +143,7 @@ col3.metric("포트폴리오 연 예상 회수율", f"{total_weighted_return:.2f
 st.divider()
 
 
-# ⭐️ 사이드바 설정 (<포트폴리오 설정> 및 <매수/매도 거래 입력> 분리 배치)
+# ⭐️ 사이드바 설정 (<포트폴리오 설정> 및 <매수/매도 거래 입력>)
 with st.sidebar:
   st.header("⚙️ 포트폴리오 설정")
   st.write(
@@ -167,7 +167,6 @@ with st.sidebar:
 
   st.divider()
 
-  # ⭐️ 매수 / 매도 거래 입력을 사이드바 하단으로 이동
   st.header("🛒 매수 / 매도 거래 입력")
   with st.form("trade_form", clear_on_submit=True):
     trade_ticker = (
@@ -264,7 +263,7 @@ with st.sidebar:
         st.rerun()
 
 
-# ⭐️ <종목별 분석 및 비중 현황> 메인 영역
+# ⭐️ <종목별 분석 및 비중 현황> 메인 영역 (누락되었던 비중 계산 컬럼 복구 완료)
 if not st.session_state.portfolio.empty:
   raw_df = st.session_state.portfolio.copy()
   raw_df["수량"] = pd.to_numeric(raw_df["수량"], errors="coerce").fillna(0.0)
@@ -290,6 +289,13 @@ if not st.session_state.portfolio.empty:
         by="현재 평가금액(총액)", ascending=False
     ).reset_index(drop=True)
     active_df.index = range(1, len(active_df) + 1)
+
+    if total_portfolio_value > 0:
+      active_df["포트폴리오 비중(%)"] = (
+          active_df["현재 평가금액(총액)"] / total_portfolio_value
+      ) * 100
+    else:
+      active_df["포트폴리오 비중(%)"] = 0.0
 
     table_df = active_df.copy()
     table_df = table_df.rename(
