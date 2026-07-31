@@ -60,7 +60,7 @@ def get_current_prices(tickers):
   return current_prices_temp
 
 
-# 데이터 정합성 보장 및 사이드바 <포트폴리오 설정> 평가금액 내림차순 정렬
+# 데이터 정합성 보장 및 사이드바 평가금액 내림차순 정렬
 sidebar_input_cols = ["티커", "수량", "연 예상 성장률(%)", "연 회수율(%)"]
 for col in sidebar_input_cols:
   if col not in st.session_state.portfolio.columns:
@@ -133,7 +133,7 @@ if not active_df_calc.empty:
     )
 
 
-# ⭐️ 1. 화면 최상단: 전체 포트폴리오 종합 성과 요약 배치
+# 1. 화면 최상단: 전체 포트폴리오 종합 성과 요약 배치
 st.subheader("🎯 전체 포트폴리오 종합 성과 요약")
 col1, col2, col3 = st.columns(3)
 col1.metric("총 포트폴리오 평가금액", f"${total_portfolio_value:,.2f}")
@@ -143,30 +143,8 @@ col3.metric("포트폴리오 연 예상 회수율", f"{total_weighted_return:.2f
 st.divider()
 
 
-# ⭐️ 사이드바 설정 (<포트폴리오 설정> 및 <매수/매도 거래 입력>)
+# ⭐️ 사이드바: 매수/매도 거래 입력을 상단으로 배치하고, 포트폴리오 설정을 하단으로 배치
 with st.sidebar:
-  st.header("⚙️ 포트폴리오 설정")
-  st.write(
-      "종목별 **연 예상 성장률**과 **회수율(배당 등)**을 미리 설정하거나 종목을"
-      " 관리할 수 있습니다."
-  )
-
-  current_setting_df = st.session_state.portfolio[sidebar_input_cols].copy()
-
-  edited_df = st.data_editor(
-      current_setting_df,
-      num_rows="dynamic",
-      use_container_width=True,
-      key="sidebar_editor",
-  )
-
-  if not edited_df.equals(current_setting_df):
-    st.session_state.portfolio = edited_df.copy()
-    edited_df.to_csv(DATA_FILE, index=False)
-    st.rerun()
-
-  st.divider()
-
   st.header("🛒 매수 / 매도 거래 입력")
   with st.form("trade_form", clear_on_submit=True):
     trade_ticker = (
@@ -262,8 +240,30 @@ with st.sidebar:
         st.session_state.portfolio = current_portfolio
         st.rerun()
 
+  st.divider()
 
-# ⭐️ <종목별 분석 및 비중 현황> 메인 영역 (누락되었던 비중 계산 컬럼 복구 완료)
+  st.header("⚙️ 포트폴리오 설정")
+  st.write(
+      "종목별 **연 예상 성장률**과 **회수율(배당 등)**을 미리 설정하거나 종목을"
+      " 관리할 수 있습니다."
+  )
+
+  current_setting_df = st.session_state.portfolio[sidebar_input_cols].copy()
+
+  edited_df = st.data_editor(
+      current_setting_df,
+      num_rows="dynamic",
+      use_container_width=True,
+      key="sidebar_editor",
+  )
+
+  if not edited_df.equals(current_setting_df):
+    st.session_state.portfolio = edited_df.copy()
+    edited_df.to_csv(DATA_FILE, index=False)
+    st.rerun()
+
+
+# ⭐️ <종목별 분석 및 비중 현황> 메인 영역
 if not st.session_state.portfolio.empty:
   raw_df = st.session_state.portfolio.copy()
   raw_df["수량"] = pd.to_numeric(raw_df["수량"], errors="coerce").fillna(0.0)
@@ -443,6 +443,6 @@ if not st.session_state.portfolio.empty:
       st.pyplot(fig)
   else:
     st.info(
-        "현재 보유 중인 종목이 없습니다. (사이드바 설정 및 매수 거래 입력을 통해"
-        " 종목을 추가해 주세요.)"
+        "현재 보유 중인 종목이 없습니다. (사이드바 거래 입력 및 설정을 통해 종목을"
+        " 추가해 주세요.)"
     )
